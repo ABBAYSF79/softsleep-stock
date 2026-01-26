@@ -41,8 +41,10 @@ import settingsRoutes from './routes/settings';
 import sizeRoutes from './routes/sizes';
 import activitiesRoutes from './routes/activities';
 import confirmationUsersRoutes from './routes/confirmation-users';
+import healthRoutes from './routes/health';
 
 // Use routes
+app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
