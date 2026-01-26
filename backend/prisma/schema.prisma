@@ -1,0 +1,194 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "darwin-arm64", "windows"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model ConfirmationUser {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String?
+  email     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  salesmanId Int
+  salesman   User     @relation("SalesmanConfirmations", fields: [salesmanId], references: [id])
+  linkedSalesUserId Int?
+  linkedSalesUser   User?    @relation("LinkedSalesUser", fields: [linkedSalesUserId], references: [id])
+  orders     Order[]
+
+  @@index([salesmanId])
+  @@index([linkedSalesUserId])
+}
+
+model User {
+  id             Int            @id @default(autoincrement())
+  name           String
+  email          String         @unique
+  password       String
+  role           UserRole       @default(SALES)
+  lastActive     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  active         Boolean        @default(true)
+  activities     Activity[]
+  orders         Order[]
+  stockHistories StockHistory[]
+  confirmationUsers ConfirmationUser[] @relation("SalesmanConfirmations")
+  linkedConfirmationUsers ConfirmationUser[] @relation("LinkedSalesUser")
+}
+
+model Product {
+  id          Int              @id @default(autoincrement())
+  name        String
+  sku         String           @unique
+  description String?          @db.Text
+  inStock     Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  variants    ProductVariant[]
+}
+
+model ProductVariant {
+  id             Int            @id @default(autoincrement())
+  productId      Int
+  name           String
+  skuExt         String
+  price          Decimal        @db.Decimal(10, 2)
+  weight         Decimal        @default(1.00) @db.Decimal(10, 2)
+  stock          Int
+  commission     Decimal?       @db.Decimal(10, 2)
+  sizeId         Int?
+  orderItems     OrderItem[]
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size           Size?          @relation(fields: [sizeId], references: [id])
+  stockHistories StockHistory[]
+
+  @@unique([productId, skuExt])
+  @@index([sizeId], map: "ProductVariant_sizeId_fkey")
+}
+
+model Order {
+  id                Int              @id @default(autoincrement())
+  userId            Int
+  customerName      String
+  status            OrderStatus      @default(PENDING)
+  totalAmount       Decimal          @db.Decimal(10, 2)
+  commission        Decimal          @db.Decimal(10, 2)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  address           String?
+  phone             String?
+  deliveryServiceId Int?
+  city              String?
+  trackingCode      String?
+  isPaid            Boolean          @default(false)
+  note              String?          @db.Text
+  deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
+  orderItems        OrderItem[]
+  confirmationUserId Int?
+  confirmationUser   ConfirmationUser? @relation(fields: [confirmationUserId], references: [id])
+
+  @@index([deliveryServiceId], map: "Order_deliveryServiceId_fkey")
+  @@index([userId], map: "Order_userId_fkey")
+}
+
+model OrderItem {
+  id        Int            @id @default(autoincrement())
+  orderId   Int
+  variantId Int
+  quantity  Int
+  price     Decimal        @db.Decimal(10, 2)
+  order     Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId], map: "OrderItem_orderId_fkey")
+  @@index([variantId], map: "OrderItem_variantId_fkey")
+}
+
+model StockHistory {
+  id            Int             @id @default(autoincrement())
+  variantId     Int
+  quantity      Int
+  type          StockChangeType
+  reason        String?
+  createdAt     DateTime        @default(now())
+  previousStock Int
+  newStock      Int
+  userId        Int
+  user          User            @relation(fields: [userId], references: [id])
+  variant       ProductVariant  @relation(fields: [variantId], references: [id])
+
+  @@index([userId])
+  @@index([variantId])
+}
+
+model DeliveryService {
+  id        Int      @id @default(autoincrement())
+  name      String
+  active    Boolean  @default(true)
+  cities    String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orders    Order[]
+}
+
+model CommissionSettings {
+  id                 Int      @id @default(autoincrement())
+  defaultRate        Decimal  @default(10.00) @db.Decimal(5, 2)
+  defaultFixedAmount Decimal? @db.Decimal(10, 2)
+  useFixedAmount     Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Size {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
+  length    Decimal          @db.Decimal(10, 2)
+  width     Decimal          @db.Decimal(10, 2)
+  height    Decimal          @db.Decimal(10, 2)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  variants  ProductVariant[]
+}
+
+model Activity {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String
+  description String
+  details     String?  @db.Text
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+enum UserRole {
+  ADMIN
+  SALES
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROCESS
+  DELIVERED
+  RETURNED
+}
+
+enum StockChangeType {
+  INITIAL
+  ORDER
+  RETURN
+  ADJUSTMENT
+  SUPPLY
+}
