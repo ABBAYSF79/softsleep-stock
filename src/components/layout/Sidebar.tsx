@@ -17,7 +17,8 @@ import {
   Trophy,
   BarChart3,
   UserCheck,
-  Users2
+  Users2,
+  Lock
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -89,6 +90,12 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       title: "Activities",
       icon: <Activity className="h-5 w-5" />,
       path: "/activities",
+      adminOnly: true,
+    },
+    {
+      title: "Advanced Edit",
+      icon: <Lock className="h-5 w-5" />,
+      path: "/advanced-edit",
       adminOnly: true,
     },
     {

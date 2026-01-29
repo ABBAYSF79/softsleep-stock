@@ -21,6 +21,7 @@ import Finance from "@/pages/Finance";
 import Leaderboard from "@/pages/Leaderboard";
 import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
+import AdvancedEdit from "@/pages/AdvancedEdit";
 import { LayoutDashboard, Package, ShoppingCart, LineChart, UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,11 @@ const App = () => (
             <Route path="/activities" element={
               <ProtectedRoute adminOnly>
                 <Activities />
+              </ProtectedRoute>
+            } />
+            <Route path="/advanced-edit" element={
+              <ProtectedRoute adminOnly>
+                <AdvancedEdit />
               </ProtectedRoute>
             } />
             <Route path="/invoice" element={

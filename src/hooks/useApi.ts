@@ -68,11 +68,43 @@ export const useDeleteProduct = () => {
   });
 };
 // Orders
+export interface OrderFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  salesman?: string;
+  dateFilter?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
 export const useOrders = () => {
   return useQuery({
     queryKey: ['orders'],
     queryFn: async () => {
       const { data } = await api.get('/orders');
+      return data;
+    }
+  });
+};
+
+export const usePaginatedOrders = (filters: OrderFilters) => {
+  return useQuery({
+    queryKey: ['orders-paginated', filters],
+    queryFn: async () => {
+      const { data } = await api.get('/orders', { params: filters });
+      return data;
+    },
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching new data
+  });
+};
+
+export const useOrderStats = () => {
+  return useQuery({
+    queryKey: ['orders-stats'],
+    queryFn: async () => {
+      const { data } = await api.get('/orders/stats');
       return data;
     }
   });
@@ -113,15 +145,43 @@ export const useUpdateOrderStatus = () => {
       const { data: response } = await api.patch(`/orders/${data.id}/status`, data);
       return response;
     },
-    onSuccess: () => {
-      // Invalidate all relevant queries
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['stock'] }); // This will refresh the stock data
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    onMutate: async (newData) => {
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey: ['orders-paginated'] });
+
+      // Snapshot the previous value
+      const previousOrders = queryClient.getQueryData(['orders-paginated']);
+
+      // Optimistically update to the new value
+      queryClient.setQueriesData({ queryKey: ['orders-paginated'] }, (old: any) => {
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: old.data.map((order: any) => 
+            order.id === newData.id 
+              ? { ...order, status: newData.status, note: newData.note || order.note, trackingCode: newData.trackingCode || order.trackingCode } 
+              : order
+          )
+        };
+      });
+
+      // Return a context object with the snapshotted value
+      return { previousOrders };
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to update order status');
-    }
+    onError: (err, newData, context: any) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousOrders) {
+        queryClient.setQueriesData({ queryKey: ['orders-paginated'] }, context.previousOrders);
+      }
+      toast.error((err as any).response?.data?.error || 'Failed to update order status');
+    },
+    onSettled: () => {
+      // Always refetch after error or success:
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] }); 
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+    },
   });
 };
 
@@ -139,6 +199,49 @@ export const useUpdateOrderPaymentStatus = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update payment status');
+    }
+  });
+};
+
+export const useFullUpdateOrder = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const { data: response } = await api.put(`/orders/${id}/full`, data);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast.success('Order updated successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update order');
+    }
+  });
+};
+
+export const useDeleteOrder = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, password }: { id: number; password: string }) => {
+      const { data } = await api.delete(`/orders/${id}`, { data: { password } });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Order deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to delete order');
     }
   });
 };

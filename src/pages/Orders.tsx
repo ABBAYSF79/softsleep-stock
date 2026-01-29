@@ -20,41 +20,100 @@ import {
   TrendingUp,
   PackageCheck,
   Clock,
-  AlertTriangle,
-  RotateCw
+  RotateCw,
+  Trash2,
+  Copy,
+  ScanBarcode,
+  Download,
+  FileText,
+  ClipboardCopy
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderDialog } from "@/components/orders/OrderDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
+import { BarcodeDialog } from "@/components/orders/BarcodeDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useOrders } from "@/hooks/useApi";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePaginatedOrders, useOrderStats, useOrders, useDeleteOrder } from "@/hooks/useApi";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { TrackingCodeCell } from "@/components/orders/TrackingCodeCell";
-import { usePagination } from "@/hooks/usePagination";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { useDebounce } from "@/hooks/useDebounce";
+import { DeleteConfirmDialog } from "@/components/common/DeleteConfirmDialog";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { exportOrdersToExcel } from "@/utils/excel-export";
+import { exportOrdersToPdf } from "@/utils/pdf-export";
+import { formatOrdersToText } from "@/utils/text-export";
 
 const Orders = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<any>(null);
   const [isTicketOpen, setIsTicketOpen] = useState(false);
   const [ticketOrder, setTicketOrder] = useState<any>(null);
+  
+  // Barcode Dialog State
+  const [isBarcodeOpen, setIsBarcodeOpen] = useState(false);
+  const [barcodeTrackingCode, setBarcodeTrackingCode] = useState("");
+
+  // Multi-select state
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Delete Dialog State
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState<any>(null);
+
+  // Filter states
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [salesmanFilter, setSalesmanFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState<"all" | "today">("all");
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "last7days" | "last30days">("all");
   
-  const { data: orders, isLoading, error, refetch, isRefetching } = useOrders();
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Debounce search term to avoid too many requests
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
   const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+
+  // Fetch paginated orders
+  const { 
+    data: ordersData, 
+    isLoading, 
+    error, 
+    refetch, 
+    isRefetching 
+  } = usePaginatedOrders({
+    page: currentPage,
+    limit: itemsPerPage,
+    status: statusFilter,
+    search: debouncedSearchTerm,
+    salesman: salesmanFilter,
+    dateFilter
+  });
+
+  // Fetch stats separately
+  const { data: stats } = useOrderStats();
+  
+  // Delete mutation
+  const deleteOrderMutation = useDeleteOrder();
 
   useEffect(() => {
     if (error) {
       console.error("Error loading orders:", error);
     }
   }, [error]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, debouncedSearchTerm, salesmanFilter, dateFilter]);
 
   const handleViewOrder = (order: any) => {
     setViewingOrder(order);
@@ -74,100 +133,126 @@ const Orders = () => {
   };
 
   const handleStatusUpdate = (orderId: number, newStatus: string) => {
-    // This function is called after successful status update
     console.log(`Order ${orderId} status updated to ${newStatus}`);
+    refetch(); // Refetch orders to show updated status
   };
 
   const handlePrintOrder = (order: any) => {
     setTicketOrder(order);
     setIsTicketOpen(true);
   };
-
-  // Get unique salesmen from orders
-  const uniqueSalesmen = Array.from(new Set(orders?.map(order => order.user?.name).filter(Boolean) || [])) as string[];
-
-  // Statistics Calculation
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const oneWeekAgo = new Date(today);
-  oneWeekAgo.setDate(today.getDate() - 7);
   
-  const oneMonthAgo = new Date(today);
-  oneMonthAgo.setDate(today.getDate() - 30);
+  const handleDeleteClick = (order: any) => {
+    setDeletingOrder(order);
+    setIsDeleteDialogOpen(true);
+  };
 
-  const todayOrdersCount = orders?.filter(order => {
-    const orderDate = new Date(order.createdAt);
-    orderDate.setHours(0, 0, 0, 0);
-    return orderDate.getTime() === today.getTime();
-  }).length || 0;
-
-  const totalLastWeek = orders?.filter(order => {
-    const orderDate = new Date(order.createdAt);
-    return orderDate >= oneWeekAgo;
-  }).length || 0;
-
-  const deliveredLastWeek = orders?.filter(order => {
-    const orderDate = new Date(order.createdAt);
-    return order.status === 'DELIVERED' && orderDate >= oneWeekAgo;
-  }).length || 0;
-
-  const totalLastMonth = orders?.filter(order => {
-    const orderDate = new Date(order.createdAt);
-    return orderDate >= oneMonthAgo;
-  }).length || 0;
-
-  const deliveredLastMonth = orders?.filter(order => {
-    const orderDate = new Date(order.createdAt);
-    return order.status === 'DELIVERED' && orderDate >= oneMonthAgo;
-  }).length || 0;
-
-  const totalOrders = orders?.length || 0;
-  const deliveredOrders = orders?.filter(order => order.status === 'DELIVERED').length || 0;
-  const deliveredRate = totalOrders > 0 ? ((deliveredOrders / totalOrders) * 100).toFixed(1) : "0.0";
-
-  // Filter orders based on selected status, search term, salesman, and date
-  const filteredOrders = orders?.filter(order => {
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter.toUpperCase();
-    const matchesSearch = searchTerm === "" || 
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.trackingCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toString().includes(searchTerm);
-    const matchesSalesman = salesmanFilter === "all" || order.user?.name === salesmanFilter;
-    
-    let matchesDate = true;
-    if (dateFilter === "today") {
-      const orderDate = new Date(order.createdAt);
-      orderDate.setHours(0, 0, 0, 0);
-      matchesDate = orderDate.getTime() === today.getTime();
-    } else if (dateFilter === "last7days") {
-      const orderDate = new Date(order.createdAt);
-      matchesDate = orderDate >= oneWeekAgo;
-    } else if (dateFilter === "last30days") {
-      const orderDate = new Date(order.createdAt);
-      matchesDate = orderDate >= oneMonthAgo;
+  const handleConfirmDelete = (password: string) => {
+    if (deletingOrder) {
+      deleteOrderMutation.mutate(
+        { id: deletingOrder.id, password },
+        {
+          onSuccess: () => {
+            setIsDeleteDialogOpen(false);
+            setDeletingOrder(null);
+            // Refetch is handled by the hook
+          }
+        }
+      );
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedOrders([]); // Clear selection on page change
+  };
+
+  const handleItemsPerPageChange = (items: number) => {
+    setItemsPerPage(items);
+    setCurrentPage(1);
+    setSelectedOrders([]); // Clear selection on page change
+  };
+
+  const handleSelectOrder = (orderId: number) => {
+    setSelectedOrders(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId);
+      } else {
+        return [...prev, orderId];
+      }
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedOrders(orders.map((o: any) => o.id));
+    } else {
+      setSelectedOrders([]);
+    }
+  };
+
+  const handleExport = async () => {
+    if (selectedOrders.length === 0) return;
     
-    return matchesStatus && matchesSearch && matchesSalesman && matchesDate;
-  }) || [];
+    setIsExporting(true);
+    try {
+      const ordersToExport = orders.filter((o: any) => selectedOrders.includes(o.id));
+      await exportOrdersToExcel(ordersToExport);
+      toast.success(`Exported ${ordersToExport.length} orders successfully`);
+      setSelectedOrders([]);
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast.error("Failed to export orders");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
-  // Calculate pagination
-  const {
-    currentPage,
-    itemsPerPage,
-    totalPages,
-    startIndex,
-    endIndex,
-    handlePageChange,
-    handleItemsPerPageChange
-  } = usePagination({
-    totalItems: filteredOrders.length,
-    initialItemsPerPage: 10,
-    storageKey: "orders-pagination-limit"
-  });
+  const handleExportPdf = () => {
+    if (selectedOrders.length === 0) return;
+    
+    setIsExporting(true);
+    try {
+      const ordersToExport = orders.filter((o: any) => selectedOrders.includes(o.id));
+      exportOrdersToPdf(ordersToExport);
+      toast.success(`Exported ${ordersToExport.length} orders to PDF successfully`);
+      setSelectedOrders([]);
+    } catch (error) {
+      console.error("PDF Export failed:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
-  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+  const handleCopySelected = async () => {
+    if (selectedOrders.length === 0) return;
+
+    try {
+      const ordersToExport = orders.filter((o: any) => selectedOrders.includes(o.id));
+      const formattedText = formatOrdersToText(ordersToExport);
+      
+      await navigator.clipboard.writeText(formattedText);
+      toast.success(`Copied ${ordersToExport.length} orders to clipboard`);
+      setSelectedOrders([]);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      toast.error("Failed to copy orders");
+    }
+  };
+
+  // Stats from the separate endpoint
+  const todayOrdersCount = stats?.todayOrdersCount || 0;
+  const totalLastWeek = stats?.totalLastWeek || 0;
+  const deliveredLastWeek = stats?.deliveredLastWeek || 0;
+  const totalLastMonth = stats?.totalLastMonth || 0;
+  const deliveredLastMonth = stats?.deliveredLastMonth || 0;
+  const deliveredRate = stats?.totalOrders > 0 
+    ? ((stats.deliveredOrders / stats.totalOrders) * 100).toFixed(1) 
+    : "0.0";
+
+  const orders = ordersData?.data || [];
+  const meta = ordersData?.meta || { total: 0, page: 1, limit: 10, totalPages: 0 };
 
   if (isLoading) {
     return (
@@ -179,6 +264,9 @@ const Orders = () => {
     );
   }
 
+  // Show a toast or small indicator when background fetching happens
+  // We can't return a full loader here because it would hide the content during pagination
+  
   if (error) {
     return (
       <MainLayout>
@@ -225,6 +313,36 @@ const Orders = () => {
                 className="pl-8"
               />
             </div>
+            {selectedOrders.length > 0 && (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleExport} 
+                  disabled={isExporting}
+                  variant="outline"
+                  className="gap-2 border-green-600 text-green-600 hover:bg-green-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Excel ({selectedOrders.length})
+                </Button>
+                <Button 
+                  onClick={handleExportPdf} 
+                  disabled={isExporting}
+                  variant="outline"
+                  className="gap-2 border-red-600 text-red-600 hover:bg-red-50"
+                >
+                  <FileText className="h-4 w-4" />
+                  PDF ({selectedOrders.length})
+                </Button>
+                <Button 
+                  onClick={handleCopySelected} 
+                  variant="outline"
+                  className="gap-2 border-blue-600 text-blue-600 hover:bg-blue-50"
+                >
+                  <ClipboardCopy className="h-4 w-4" />
+                  Copy ({selectedOrders.length})
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -305,11 +423,12 @@ const Orders = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Salesmen</SelectItem>
-              {uniqueSalesmen.map((salesman: string) => (
+              {/* Salesmen list disabled for now as we don't have the full list loaded */}
+              {/* {uniqueSalesmen.map((salesman: string) => (
                 <SelectItem key={salesman} value={salesman}>
                   {salesman}
                 </SelectItem>
-              ))}
+              ))} */}
             </SelectContent>
           </Select>
         </div>
@@ -317,6 +436,12 @@ const Orders = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">
+                <Checkbox 
+                  checked={selectedOrders.length === orders.length && orders.length > 0}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
               <TableHead>Order #</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Phone</TableHead>
@@ -330,16 +455,67 @@ const Orders = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedOrders.map((order) => (
-              <TableRow key={order.id}>
+            {orders.map((order: any) => (
+              <TableRow key={order.id} className={selectedOrders.includes(order.id) ? "bg-muted/50" : ""}>
+                <TableCell>
+                  <Checkbox 
+                    checked={selectedOrders.includes(order.id)}
+                    onCheckedChange={() => handleSelectOrder(order.id)}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">{order.id}</TableCell>
                 <TableCell>{order.customerName}</TableCell>
                 <TableCell>{order.phone || '-'}</TableCell>
                 <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell><OrderStatusBadge status={order.status} /></TableCell>
                 <TableCell>
-                  <TrackingCodeCell order={order} />
-                </TableCell>
+                  <div className="flex items-center gap-2">
+                    <TrackingCodeCell order={order} />
+                    {order.trackingCode && (
+                      <>
+                        <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(order.trackingCode);
+                              toast.success("Tracking code copied!");
+                          }}
+                        >
+                          <Copy className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Copy tracking code</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBarcodeTrackingCode(order.trackingCode);
+                            setIsBarcodeOpen(true);
+                          }}
+                        >
+                          <ScanBarcode className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>View Barcode</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
+              </div>
+            </TableCell>
                 <TableCell>{order.city || '-'}</TableCell>
                 <TableCell>{order.deliveryService?.name || '-'}</TableCell>
                 <TableCell className="text-right">MAD {formatPrice(order.totalAmount)}</TableCell>
@@ -359,6 +535,25 @@ const Orders = () => {
                         <p>Print/Download Ticket</p>
                       </TooltipContent>
                     </Tooltip>
+                    
+                    {isAdmin && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleDeleteClick(order)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete Order</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
                     <Button 
                       variant="ghost" 
                       size="icon"
@@ -376,13 +571,13 @@ const Orders = () => {
         {/* Pagination */}
         <PaginationControls
           currentPage={currentPage}
-          totalPages={totalPages}
+          totalPages={meta.totalPages}
           onPageChange={handlePageChange}
           itemsPerPage={itemsPerPage}
           onItemsPerPageChange={handleItemsPerPageChange}
-          totalItems={filteredOrders.length}
-          startIndex={startIndex}
-          endIndex={endIndex}
+          totalItems={meta.total}
+          startIndex={(currentPage - 1) * itemsPerPage}
+          endIndex={Math.min(currentPage * itemsPerPage, meta.total)}
         />
       </div>
       
@@ -397,6 +592,22 @@ const Orders = () => {
         open={isTicketOpen} 
         onOpenChange={setIsTicketOpen}
         order={ticketOrder}
+      />
+
+      <BarcodeDialog
+        open={isBarcodeOpen}
+        onOpenChange={setIsBarcodeOpen}
+        trackingCode={barcodeTrackingCode}
+      />
+
+      <DeleteConfirmDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={handleConfirmDelete}
+        title="Delete Order"
+        description="Are you sure you want to delete this order? This will remove all associated data and restore stock if applicable. This action cannot be undone."
+        itemName={`Order #${deletingOrder?.id} - ${deletingOrder?.customerName}`}
+        isPending={deleteOrderMutation.isPending}
       />
     </MainLayout>
   );
