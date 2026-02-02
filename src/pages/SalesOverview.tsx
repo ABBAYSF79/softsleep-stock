@@ -172,6 +172,8 @@ const SalesOverview = () => {
     const headers = [
       'Order ID',
       'Customer',
+      'City',
+      'Delivery Service',
       'Date',
       'Status',
       'Salesman',
@@ -189,6 +191,8 @@ const SalesOverview = () => {
       return [
         order.id,
         order.customerName || 'Unknown Customer',
+        order.city || 'Unknown City',
+        order.deliveryService?.name || 'Unknown Service',
         format(new Date(order.createdAt), 'MMM d, yyyy'),
         order.status || 'Unknown Status',
         order.salesman?.name || 'Unknown Salesman',
@@ -382,6 +386,8 @@ const SalesOverview = () => {
                 <TableRow>
                   <TableHead>Order ID</TableHead>
                   <TableHead>Customer</TableHead>
+                  <TableHead>City</TableHead>
+                  <TableHead>Delivery Service</TableHead>
                   <TableHead>Salesman</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Amount</TableHead>
@@ -394,6 +400,8 @@ const SalesOverview = () => {
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">#{order.id}</TableCell>
                     <TableCell>{order.customerName}</TableCell>
+                    <TableCell>{order.city || '-'}</TableCell>
+                    <TableCell>{order.deliveryService?.name || '-'}</TableCell>
                     <TableCell>{order.salesman?.name || 'Unknown'}</TableCell>
                     <TableCell>{format(new Date(order.createdAt), 'MMM dd, yyyy')}</TableCell>
                     <TableCell>MAD {Number(order.totalAmount).toFixed(2)}</TableCell>

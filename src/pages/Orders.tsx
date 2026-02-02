@@ -34,7 +34,7 @@ import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { BarcodeDialog } from "@/components/orders/BarcodeDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePaginatedOrders, useOrderStats, useOrders, useDeleteOrder } from "@/hooks/useApi";
+import { usePaginatedOrders, useOrderStats, useOrders, useDeleteOrder, useUsers } from "@/hooks/useApi";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { TrackingCodeCell } from "@/components/orders/TrackingCodeCell";
@@ -82,6 +82,9 @@ const Orders = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
 
+  // Fetch users for salesman filter
+  const { data: users = [] } = useUsers();
+
   // Fetch paginated orders
   const { 
     data: ordersData, 
@@ -100,6 +103,11 @@ const Orders = () => {
 
   // Fetch stats separately
   const { data: stats } = useOrderStats();
+  
+  const uniqueSalesmen = users
+    .filter((u: any) => u.active !== false)
+    .map((u: any) => u.name)
+    .sort();
   
   // Delete mutation
   const deleteOrderMutation = useDeleteOrder();
@@ -423,12 +431,11 @@ const Orders = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Salesmen</SelectItem>
-              {/* Salesmen list disabled for now as we don't have the full list loaded */}
-              {/* {uniqueSalesmen.map((salesman: string) => (
+              {uniqueSalesmen.map((salesman: string) => (
                 <SelectItem key={salesman} value={salesman}>
                   {salesman}
                 </SelectItem>
-              ))} */}
+              ))}
             </SelectContent>
           </Select>
         </div>
