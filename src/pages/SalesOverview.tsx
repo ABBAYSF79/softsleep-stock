@@ -172,6 +172,7 @@ const SalesOverview = () => {
     const headers = [
       'Order ID',
       'Customer',
+      'Phone',
       'City',
       'Delivery Service',
       'Date',
@@ -191,6 +192,7 @@ const SalesOverview = () => {
       return [
         order.id,
         order.customerName || 'Unknown Customer',
+        order.phone || 'Unknown Phone',
         order.city || 'Unknown City',
         order.deliveryService?.name || 'Unknown Service',
         format(new Date(order.createdAt), 'MMM d, yyyy'),
@@ -386,6 +388,7 @@ const SalesOverview = () => {
                 <TableRow>
                   <TableHead>Order ID</TableHead>
                   <TableHead>Customer</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>City</TableHead>
                   <TableHead>Delivery Service</TableHead>
                   <TableHead>Salesman</TableHead>
@@ -400,6 +403,7 @@ const SalesOverview = () => {
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">#{order.id}</TableCell>
                     <TableCell>{order.customerName}</TableCell>
+                    <TableCell>{order.phone || '-'}</TableCell>
                     <TableCell>{order.city || '-'}</TableCell>
                     <TableCell>{order.deliveryService?.name || '-'}</TableCell>
                     <TableCell>{order.salesman?.name || 'Unknown'}</TableCell>
