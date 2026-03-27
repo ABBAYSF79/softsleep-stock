@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import SalesOverview from "@/pages/SalesOverview";
 import Activities from "@/pages/Activities";
 import Invoice from "@/pages/Invoice";
+import InvoicesTracking from "@/pages/InvoicesTracking";
 import Finance from "@/pages/Finance";
 import Leaderboard from "@/pages/Leaderboard";
 import ConfirmationTeam from "@/pages/ConfirmationTeam";
@@ -83,6 +84,11 @@ const App = () => (
             <Route path="/invoice" element={
               <ProtectedRoute adminOnly>
                 <Invoice />
+              </ProtectedRoute>
+            } />
+            <Route path="/invoices" element={
+              <ProtectedRoute adminOnly>
+                <InvoicesTracking />
               </ProtectedRoute>
             } />
             <Route path="/finance" element={

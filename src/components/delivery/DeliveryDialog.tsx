@@ -135,7 +135,7 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
 
           <div className="space-y-2">
             <Label>Cities</Label>
-            <div className="flex flex-wrap gap-2 mb-2 min-h-[40px] p-2 border rounded">
+            <div className="flex flex-wrap gap-2 mb-2 min-h-[40px] max-h-[200px] overflow-y-auto p-2 border rounded">
               {formData.cities.length === 0 ? (
                 <p className="text-sm text-gray-500">No cities added yet</p>
               ) : (

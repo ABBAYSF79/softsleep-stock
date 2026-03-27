@@ -261,6 +261,38 @@ async function main() {
   });
   console.log('Created delivery service:', delivery3.name);
 
+  // Stress test service with a very large city list (200+ cities)
+  const coreMoroccanCities = [
+    'Casablanca', 'Rabat', 'Fes', 'Marrakech', 'Tangier', 'Agadir', 'Meknes', 'Oujda', 'Kenitra', 'Tetouan',
+    'Safi', 'ElJadida', 'Nador', 'BeniMellal', 'Taza', 'Khouribga', 'Settat', 'Larache', 'KsarElKebir', 'Guelmim',
+    'Errachidia', 'Ouarzazate', 'Taroudant', 'Ifrane', 'Azrou', 'AlHoceima', 'Berkane', 'Taourirt', 'SidiKacem', 'SidiSlimane',
+    'Youssoufia', 'Mohammedia', 'Essaouira', 'Dakhla', 'Laayoune', 'Khemisset', 'Chefchaouen', 'Tiflet', 'Temara', 'Sale',
+    'Berrechid', 'Skhirat', 'Bouskoura', 'AinHarrouda', 'Mediouna', 'Fnideq', 'Martil', 'Asilah', 'Sefrou', 'Khenifra',
+    'Bousselham', 'Azemmour', 'BenGuerir', 'FquihBenSalah', 'Jerada', 'Tinghir', 'Tiznit', 'SidiIfni', 'Zagora', 'Midelt',
+    'Guercif', 'HadSoualem', 'DarBouazza', 'BeniAnsar', 'AitMelloul', 'Inzegane', 'Imzouren', 'SoukLarbaa', 'Ouazzane', 'Bouznika'
+  ];
+
+  const regionalCities = [
+    'AinAouda', 'AitOurir', 'AitBaha', 'AitIshaq', 'AitYadine', 'BabBerred', 'BabTaza', 'Bhalil', 'Biougra', 'Bouarfa',
+    'Boujdour', 'Boulemane', 'BouznikaPlage', 'Demnate', 'Drarga', 'ElAiounSidiMellouk', 'ElHajeb', 'ElKelaaDesSraghna', 'ElMansouria', 'ElMenzel',
+    'Farkhana', 'Figuig', 'Ghafsai', 'Goulmima', 'HadKourt', 'Imintanoute', 'JerfElMelha', 'KariaBaMohamed', 'KasbaTadla', 'KelaatMguna',
+    'KsarSghir', 'Lqliaa', 'Mdiq', 'MechraaBelKsiri', 'Mehdia', 'Missour', 'MoulayBousselham', 'MoulayIdriss', 'Mrirt', 'NzaletBeniAmmar',
+    'Oualidia', 'OuedAmlil', 'OuladTeima', 'OuladYaich', 'RasElMa', 'Rich', 'Rommani', 'SabaaAiyoun', 'Saidia', 'SidiAllalBahraoui',
+    'SidiAllalTazi', 'SidiBennour', 'SidiBibi', 'SidiBouOthmane', 'SidiRahhal', 'SidiYahyaElGharb', 'Skoura', 'Smara', 'SoukElArbaa', 'Tahla'
+  ];
+
+  const loadTestCities = Array.from({ length: 90 }, (_, i) => `TestCity${String(i + 1).padStart(3, '0')}`);
+  const stressCities = [...coreMoroccanCities, ...regionalCities, ...loadTestCities];
+
+  const deliveryStress = await prisma.deliveryService.create({
+    data: {
+      name: 'Stress Test Delivery 200 Cities',
+      active: true,
+      cities: JSON.stringify(stressCities)
+    }
+  });
+  console.log('Created delivery service:', deliveryStress.name, `(${stressCities.length} cities)`);
+
   console.log('Database seed completed successfully!');
 }
 

@@ -16,10 +16,6 @@ import {
   Eye,
   Plus,
   Printer,
-  Calendar,
-  TrendingUp,
-  PackageCheck,
-  Clock,
   RotateCw,
   Trash2,
   Copy,
@@ -28,13 +24,12 @@ import {
   FileText,
   ClipboardCopy
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { OrderDialog } from "@/components/orders/OrderDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { BarcodeDialog } from "@/components/orders/BarcodeDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePaginatedOrders, useOrderStats, useOrders, useDeleteOrder, useUsers } from "@/hooks/useApi";
+import { usePaginatedOrders, useOrders, useDeleteOrder, useDeliveryServices, useUsers } from "@/hooks/useApi";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { TrackingCodeCell } from "@/components/orders/TrackingCodeCell";
@@ -66,11 +61,10 @@ const Orders = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
 
-  // Filter states
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [salesmanFilter, setSalesmanFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "last7days" | "last30days">("all");
+  const [deliveryServiceFilter, setDeliveryServiceFilter] = useState("all");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -81,9 +75,12 @@ const Orders = () => {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-
-  // Fetch users for salesman filter
   const { data: users = [] } = useUsers();
+  const { data: deliveryServices = [] } = useDeliveryServices();
+  const uniqueSalesmen = users
+    .filter((u: any) => u.active !== false)
+    .map((u: any) => u.name)
+    .sort();
 
   // Fetch paginated orders
   const { 
@@ -98,16 +95,8 @@ const Orders = () => {
     status: statusFilter,
     search: debouncedSearchTerm,
     salesman: salesmanFilter,
-    dateFilter
+    deliveryService: deliveryServiceFilter
   });
-
-  // Fetch stats separately
-  const { data: stats } = useOrderStats();
-  
-  const uniqueSalesmen = users
-    .filter((u: any) => u.active !== false)
-    .map((u: any) => u.name)
-    .sort();
   
   // Delete mutation
   const deleteOrderMutation = useDeleteOrder();
@@ -121,7 +110,7 @@ const Orders = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, debouncedSearchTerm, salesmanFilter, dateFilter]);
+  }, [statusFilter, debouncedSearchTerm, salesmanFilter, deliveryServiceFilter]);
 
   const handleViewOrder = (order: any) => {
     setViewingOrder(order);
@@ -249,16 +238,6 @@ const Orders = () => {
     }
   };
 
-  // Stats from the separate endpoint
-  const todayOrdersCount = stats?.todayOrdersCount || 0;
-  const totalLastWeek = stats?.totalLastWeek || 0;
-  const deliveredLastWeek = stats?.deliveredLastWeek || 0;
-  const totalLastMonth = stats?.totalLastMonth || 0;
-  const deliveredLastMonth = stats?.deliveredLastMonth || 0;
-  const deliveredRate = stats?.totalOrders > 0 
-    ? ((stats.deliveredOrders / stats.totalOrders) * 100).toFixed(1) 
-    : "0.0";
-
   const orders = ordersData?.data || [];
   const meta = ordersData?.meta || { total: 0, page: 1, limit: 10, totalPages: 0 };
 
@@ -354,62 +333,6 @@ const Orders = () => {
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card 
-            className={`cursor-pointer transition-colors hover:bg-accent/50 ${dateFilter === 'today' ? 'bg-accent border-primary' : ''}`}
-            onClick={() => setDateFilter(prev => prev === 'today' ? 'all' : 'today')}
-          >
-            <CardContent className="p-4 flex flex-col items-center justify-center space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wider">Today</span>
-              </div>
-              <div className="text-xl font-bold">{todayOrdersCount}</div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className={`cursor-pointer transition-colors hover:bg-accent/50 ${dateFilter === 'last7days' ? 'bg-accent border-primary' : ''}`}
-            onClick={() => setDateFilter(prev => prev === 'last7days' ? 'all' : 'last7days')}
-          >
-            <CardContent className="p-4 flex flex-col items-center justify-center space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wider">Delivered (7d)</span>
-              </div>
-              <div className="text-xl font-bold text-blue-600">
-                {deliveredLastWeek} <span className="text-sm text-muted-foreground font-normal">/ {totalLastWeek}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`cursor-pointer transition-colors hover:bg-accent/50 ${dateFilter === 'last30days' ? 'bg-accent border-primary' : ''}`}
-            onClick={() => setDateFilter(prev => prev === 'last30days' ? 'all' : 'last30days')}
-          >
-            <CardContent className="p-4 flex flex-col items-center justify-center space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <PackageCheck className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wider">Delivered (30d)</span>
-              </div>
-              <div className="text-xl font-bold text-indigo-600">
-                {deliveredLastMonth} <span className="text-sm text-muted-foreground font-normal">/ {totalLastMonth}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 flex flex-col items-center justify-center space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <TrendingUp className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wider">Success Rate</span>
-              </div>
-              <div className="text-xl font-bold text-green-600">{deliveredRate}%</div>
-            </CardContent>
-          </Card>
-        </div>
-
         <div className="flex gap-4">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[180px]">
@@ -434,6 +357,20 @@ const Orders = () => {
               {uniqueSalesmen.map((salesman: string) => (
                 <SelectItem key={salesman} value={salesman}>
                   {salesman}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={deliveryServiceFilter} onValueChange={setDeliveryServiceFilter}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by delivery service" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Delivery Services</SelectItem>
+              {deliveryServices.map((service: any) => (
+                <SelectItem key={service.id} value={service.name}>
+                  {service.name}
                 </SelectItem>
               ))}
             </SelectContent>

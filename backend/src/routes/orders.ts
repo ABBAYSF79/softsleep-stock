@@ -96,6 +96,7 @@ router.get('/', authMiddleware, async (req, res) => {
       status, 
       search, 
       salesman, 
+      deliveryService,
       startDate, 
       endDate,
       dateFilter 
@@ -122,6 +123,12 @@ router.get('/', authMiddleware, async (req, res) => {
     if (salesman && salesman !== 'all') {
       where.user = {
         name: salesman.toString()
+      };
+    }
+
+    if (deliveryService && deliveryService !== 'all') {
+      where.deliveryService = {
+        name: deliveryService.toString()
       };
     }
 

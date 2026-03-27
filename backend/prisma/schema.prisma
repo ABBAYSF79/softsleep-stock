@@ -43,6 +43,7 @@ model User {
   stockHistories StockHistory[]
   confirmationUsers ConfirmationUser[] @relation("SalesmanConfirmations")
   linkedConfirmationUsers ConfirmationUser[] @relation("LinkedSalesUser")
+  invoices       Invoice[]
 }
 
 model Product {
@@ -171,6 +172,45 @@ model Activity {
   user        User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+}
+
+model Invoice {
+  id             Int      @id @default(autoincrement())
+  reference      String   @unique
+  invoiceNumber  String
+  invoiceDate    DateTime
+  dueDate        DateTime
+  paymentMode    String
+  notes          String?  @db.Text
+
+  companyName    String
+  companyAddress String   @db.Text
+  companyPhone   String?
+  companyEmail   String?
+  companyRib     String?
+  companyIce     String?
+
+  clientName     String
+  clientPhone    String?
+  clientAddress  String?
+  clientCity     String?
+
+  orderIdsJson   String   @db.Text
+  itemsJson      String   @db.LongText
+
+  subtotalHt     Decimal  @db.Decimal(10, 2)
+  taxRate        Decimal  @db.Decimal(5, 2)
+  taxAmount      Decimal  @db.Decimal(10, 2)
+  totalTtc       Decimal  @db.Decimal(10, 2)
+  currency       String   @default("MAD")
+
+  createdByUserId Int
+  createdBy       User    @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([createdByUserId])
+  @@index([createdAt])
 }
 
 enum UserRole {

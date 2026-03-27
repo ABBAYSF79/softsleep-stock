@@ -74,6 +74,7 @@ export interface OrderFilters {
   status?: string;
   search?: string;
   salesman?: string;
+  deliveryService?: string;
   dateFilter?: string;
   startDate?: Date;
   endDate?: Date;
@@ -85,6 +86,76 @@ export const useOrders = () => {
     queryFn: async () => {
       const { data } = await api.get('/orders');
       return data;
+    }
+  });
+};
+
+export interface InvoicePayload {
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentMode: string;
+  notes?: string;
+  companyName: string;
+  companyAddress: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  companyRib?: string;
+  companyIce?: string;
+  clientName: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  clientCity?: string;
+  orderIds: number[];
+  items: Array<{
+    orderId: number;
+    orderItemId: number;
+    productName: string;
+    variantDetails: string;
+    quantity: number;
+  }>;
+  subtotalHt: number;
+  taxRate: number;
+  taxAmount: number;
+  totalTtc: number;
+  currency?: string;
+}
+
+export const useInvoices = (searchTerm = '') => {
+  return useQuery({
+    queryKey: ['invoices', searchTerm],
+    queryFn: async () => {
+      const { data } = await api.get('/invoices', { params: { search: searchTerm } });
+      return data;
+    }
+  });
+};
+
+export const useCreateInvoice = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: InvoicePayload) => {
+      const { data } = await api.post('/invoices', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-next-reference'] });
+      toast.success('Invoice saved successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to save invoice');
+    }
+  });
+};
+
+export const useNextInvoiceReference = () => {
+  return useQuery({
+    queryKey: ['invoice-next-reference'],
+    queryFn: async () => {
+      const { data } = await api.get('/invoices/next-reference');
+      return data.reference as string;
     }
   });
 };

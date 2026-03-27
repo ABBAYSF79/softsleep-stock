@@ -65,6 +65,12 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       adminOnly: true,
     },
     {
+      title: "Invoices Tracking",
+      icon: <BarChart3 className="h-5 w-5" />,
+      path: "/invoices",
+      adminOnly: true,
+    },
+    {
       title: "Finance",
       icon: <Wallet className="h-5 w-5" />,
       path: "/finance",
