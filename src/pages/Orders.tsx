@@ -135,6 +135,10 @@ const Orders = () => {
   };
 
   const handlePrintOrder = (order: any) => {
+    if (!(order?.status === "IN_PROCESS" && order?.trackingCode)) {
+      toast.error("Ticket is available only for In Process orders with a tracking code");
+      return;
+    }
     setTicketOrder(order);
     setIsTicketOpen(true);
   };
@@ -471,12 +475,17 @@ const Orders = () => {
                           variant="ghost" 
                           size="icon"
                           onClick={() => handlePrintOrder(order)}
+                          disabled={!(order?.status === "IN_PROCESS" && order?.trackingCode)}
                         >
                           <Printer className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Print/Download Ticket</p>
+                        <p>
+                          {order?.status === "IN_PROCESS" && order?.trackingCode
+                            ? "Print/Download Ticket"
+                            : "Ticket requires: In Process + tracking code"}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                     

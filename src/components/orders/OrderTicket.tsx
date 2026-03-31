@@ -1,6 +1,7 @@
 import React, { forwardRef } from 'react';
 import { Order } from '@/types';
 import { formatPrice, calculateOrderTotal, formatVariantDetails, getProductName } from "@/utils/order-utils";
+import Barcode from 'react-barcode';
 
 interface OrderTicketProps {
   order: Order | null;
@@ -176,6 +177,21 @@ export const OrderTicket = forwardRef<HTMLDivElement, OrderTicketProps>(({ order
 
         {/* FOOTER */}
         <div className="text-center mt-auto pt-4 border-t-2 border-black">
+          {order.status === "IN_PROCESS" && order.trackingCode && (
+            <div className="w-full flex flex-col items-center justify-center gap-2 pb-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest">Tracking Code</div>
+              <div className="bg-white px-3 py-2 border-2 border-black rounded-lg shadow-sm">
+                <Barcode
+                  value={order.trackingCode}
+                  width={2}
+                  height={70}
+                  fontSize={14}
+                  margin={0}
+                  displayValue={true}
+                />
+              </div>
+            </div>
+          )}
           <p className="text-xs font-medium text-black">Merci de votre confiance.</p>
           <p className="text-[10px] text-black mt-0.5 uppercase tracking-wider">SOFTSLEEP - Matelas & Accessoires de Sommeil</p>
         </div>

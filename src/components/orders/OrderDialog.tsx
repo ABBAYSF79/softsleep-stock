@@ -176,6 +176,8 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
     setStatus(newStatus);
   };
 
+  const canEditTrackingCode = isViewing && isAdmin && status === "IN_PROCESS";
+
   const checkStockLevel = (variantId: string) => {
     if (!products) return;
     
@@ -267,6 +269,10 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewing) {
+      if (status === "IN_PROCESS" && !trackingCode.trim()) {
+        toast.error("Tracking code is required when status is In Process");
+        return;
+      }
       // Check if delivery service or city changed
       const deliveryChanged = (selectedDeliveryService !== (order.deliveryServiceId?.toString() || "")) || (selectedCity !== (order.city || ""));
       if (deliveryChanged) {
@@ -353,7 +359,8 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
           })),
           confirmationUserId: selectedConfirmationUser === "none" ? null : parseInt(selectedConfirmationUser),
           note,
-          trackingCode
+          status: "PENDING",
+          trackingCode: undefined
         };
         
         console.log('Creating order with data:', JSON.stringify(orderData, null, 2));
@@ -474,7 +481,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                       value={trackingCode}
                       onChange={(e) => setTrackingCode(e.target.value)}
                       placeholder="Tracking Code"
-                      disabled={isViewing && !isAdmin}
+                      disabled={!canEditTrackingCode}
                       className={status === 'IN_PROCESS' && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
                     />
                     {status === 'IN_PROCESS' && !trackingCode && (

@@ -23,6 +23,7 @@ interface OrderTicketDialogProps {
 export const OrderTicketDialog = ({ open, onOpenChange, order }: OrderTicketDialogProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const componentRef = useRef<HTMLDivElement>(null);
+  const canDownloadTicket = order?.status === "IN_PROCESS" && !!order?.trackingCode;
   
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
@@ -31,6 +32,10 @@ export const OrderTicketDialog = ({ open, onOpenChange, order }: OrderTicketDial
 
   const handleDownload = async () => {
     if (!componentRef.current) return;
+    if (!canDownloadTicket) {
+      toast.error("Ticket can be downloaded only when order is In Process and has a tracking code");
+      return;
+    }
 
     setIsGenerating(true);
     const element = componentRef.current;
@@ -78,7 +83,7 @@ export const OrderTicketDialog = ({ open, onOpenChange, order }: OrderTicketDial
             onClick={handleDownload} 
             variant="secondary" 
             className="gap-2"
-            disabled={isGenerating}
+            disabled={isGenerating || !canDownloadTicket}
           >
             {isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -87,7 +92,17 @@ export const OrderTicketDialog = ({ open, onOpenChange, order }: OrderTicketDial
             )}
             {isGenerating ? "Generating..." : "Download PDF"}
           </Button>
-          <Button onClick={() => handlePrint()} className="gap-2 bg-matles-600 hover:bg-matles-700">
+          <Button
+            onClick={() => {
+              if (!canDownloadTicket) {
+                toast.error("Ticket can be printed only when order is In Process and has a tracking code");
+                return;
+              }
+              handlePrint();
+            }}
+            disabled={!canDownloadTicket}
+            className="gap-2 bg-matles-600 hover:bg-matles-700"
+          >
             <Printer className="h-4 w-4" />
             Print Ticket
           </Button>

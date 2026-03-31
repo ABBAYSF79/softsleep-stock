@@ -18,6 +18,7 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
   const updateOrderStatus = useUpdateOrderStatus();
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  const canEdit = isAdmin && order.status === "IN_PROCESS";
 
   useEffect(() => {
     setTrackingCode(order.trackingCode || "");
@@ -51,7 +52,7 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
   };
 
   const startEditing = (e: React.MouseEvent) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     e.stopPropagation();
     setIsEditing(true);
   };
@@ -87,11 +88,11 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
     return (
       <Badge 
         variant="outline" 
-        className={`font-mono text-xs flex items-center gap-1 group w-fit ${isAdmin ? "cursor-pointer hover:bg-accent" : ""}`}
+        className={`font-mono text-xs flex items-center gap-1 group w-fit ${canEdit ? "cursor-pointer hover:bg-accent" : ""}`}
         onClick={startEditing}
       >
         {order.trackingCode}
-        {isAdmin && <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />}
+        {canEdit && <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />}
       </Badge>
     );
   }
@@ -101,7 +102,7 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
        <Tooltip>
         <TooltipTrigger asChild>
           <div 
-            className={`flex items-center gap-1.5 text-red-600 bg-red-50 px-2.5 py-1 rounded-md border border-red-200 w-fit animate-pulse ${isAdmin ? "cursor-pointer hover:bg-red-100" : ""}`}
+            className={`flex items-center gap-1.5 text-red-600 bg-red-50 px-2.5 py-1 rounded-md border border-red-200 w-fit animate-pulse ${canEdit ? "cursor-pointer hover:bg-red-100" : ""}`}
             onClick={startEditing}
           >
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -109,7 +110,7 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
           </div>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Tracking code is missing - {isAdmin ? "Click to add" : "Required"}</p>
+          <p>Tracking code is missing - {canEdit ? "Click to add" : "Required"}</p>
         </TooltipContent>
       </Tooltip>
     );
@@ -117,11 +118,11 @@ export const TrackingCodeCell = ({ order }: TrackingCodeCellProps) => {
 
   return (
     <div 
-      className={`flex items-center gap-2 group text-muted-foreground w-fit ${isAdmin ? "cursor-pointer hover:text-foreground" : ""}`}
+      className={`flex items-center gap-2 group text-muted-foreground w-fit ${canEdit ? "cursor-pointer hover:text-foreground" : ""}`}
       onClick={startEditing}
     >
       <span className="text-sm">-</span>
-      {isAdmin && <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />}
+      {canEdit && <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />}
     </div>
   );
 };
