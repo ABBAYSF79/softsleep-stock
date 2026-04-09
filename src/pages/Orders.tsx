@@ -68,7 +68,7 @@ const Orders = () => {
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   
   // Debounce search term to avoid too many requests
   const debouncedSearchTerm = useDebounce(searchTerm, 500);

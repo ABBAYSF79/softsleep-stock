@@ -39,7 +39,7 @@ export function PaginationControls({
   endIndex,
   className,
 }: PaginationControlsProps) {
-  const pageSizeOptions = [10, 20, 30, 40, 50, 100, 200, 500];
+  const pageSizeOptions = [10, 20, 25, 30, 40, 50, 100, 200, 500];
 
   // Helper to generate page numbers with ellipsis
   const getPageNumbers = () => {

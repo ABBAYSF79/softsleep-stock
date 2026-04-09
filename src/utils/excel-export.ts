@@ -6,6 +6,8 @@ import { formatPrice } from './order-utils';
 export type ProductOverviewExcelRow = {
   orderId: number;
   orderDate: string;
+  customerName: string;
+  customerPhone: string;
   city: string;
   status: string;
   productName: string;
@@ -54,6 +56,8 @@ export async function exportProductOverviewToExcel(
   worksheet.columns = [
     { header: 'Order', key: 'orderId', width: 10 },
     { header: 'Date', key: 'date', width: 14 },
+    { header: 'Customer', key: 'customerName', width: 24 },
+    { header: 'Phone', key: 'customerPhone', width: 16 },
     { header: 'City', key: 'city', width: 18 },
     { header: 'Status', key: 'status', width: 14 },
     { header: 'Product', key: 'product', width: 32 },
@@ -73,6 +77,8 @@ export async function exportProductOverviewToExcel(
     worksheet.addRow({
       orderId: r.orderId,
       date: format(new Date(r.orderDate), 'yyyy-MM-dd'),
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
       city: r.city,
       status: r.status,
       product: r.productName,

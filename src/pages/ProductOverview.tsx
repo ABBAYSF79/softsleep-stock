@@ -208,6 +208,8 @@ function DeltaBadge({
 type OverviewRow = {
   orderId: number;
   orderDate: string;
+  customerName: string;
+  customerPhone: string;
   city: string;
   status: string;
   productName: string;
@@ -425,6 +427,8 @@ const ProductOverview = () => {
         list.push({
           orderId: order.id,
           orderDate: order.createdAt,
+          customerName: order.customerName || "—",
+          customerPhone: order.phone || "—",
           city: order.city || "—",
           status: order.status,
           productName,
@@ -1108,6 +1112,8 @@ const ProductOverview = () => {
                           <TableRow>
                             <TableHead className="w-12">#</TableHead>
                             <TableHead>Order</TableHead>
+                            <TableHead>Customer</TableHead>
+                            <TableHead>Phone</TableHead>
                             <TableHead>Date</TableHead>
                             <TableHead>City</TableHead>
                             <TableHead>Status</TableHead>
@@ -1120,7 +1126,7 @@ const ProductOverview = () => {
                           {pageRows.length === 0 ? (
                             <TableRow>
                               <TableCell
-                                colSpan={8}
+                                colSpan={10}
                                 className="text-center text-muted-foreground py-10"
                               >
                                 No lines for these filters.
@@ -1136,6 +1142,12 @@ const ProductOverview = () => {
                                 </TableCell>
                                 <TableCell className="font-medium">
                                   #{row.orderId}
+                                </TableCell>
+                                <TableCell className="max-w-[160px] truncate" title={row.customerName}>
+                                  {row.customerName}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap tabular-nums">
+                                  {row.customerPhone}
                                 </TableCell>
                                 <TableCell>
                                   {format(
