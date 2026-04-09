@@ -1,299 +1,373 @@
 // backend/prisma/seed.ts
-import { PrismaClient } from '@prisma/client';
+// Large dataset for staging / pre-production testing.
+//
+// Env (optional):
+//   SEED_ORDER_COUNT   — default 1200
+//   SEED_PRODUCT_COUNT — default 45
+//   SEED_SALES_USERS   — extra sales agents besides Omar & Aisha (default 10 → 12 sales total)
+//
+// Run (fresh DB recommended): npx prisma migrate reset
+// Or: npx prisma db seed
+
+import { PrismaClient, Prisma, OrderStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('Starting database seed...');
+const ORDER_COUNT = Math.max(50, parseInt(process.env.SEED_ORDER_COUNT || '1200', 10));
+const PRODUCT_COUNT = Math.max(5, parseInt(process.env.SEED_PRODUCT_COUNT || '45', 10));
+const EXTRA_SALES = Math.max(0, parseInt(process.env.SEED_SALES_USERS || '10', 10));
 
-  // Create admin user
+const FIRST_NAMES = [
+  'Youssef',
+  'Fatima',
+  'Omar',
+  'Aicha',
+  'Mehdi',
+  'Sara',
+  'Karim',
+  'Salma',
+  'Amine',
+  'Nadia',
+  'Hicham',
+  'Imane',
+  'Reda',
+  'Khadija',
+  'Anas',
+  'Loubna',
+  'Hamza',
+  'Houda',
+  'Zakaria',
+  'Mounia',
+];
+
+const LAST_NAMES = [
+  'Alami',
+  'Benkirane',
+  'Idrissi',
+  'Tazi',
+  'Chraibi',
+  'El Fassi',
+  'Berrada',
+  'Mouline',
+  'Filali',
+  'Amrani',
+  'Senhaji',
+  'Zerouali',
+];
+
+const CITIES = [
+  'Casablanca',
+  'Rabat',
+  'Fès',
+  'Marrakech',
+  'Tanger',
+  'Agadir',
+  'Meknès',
+  'Oujda',
+  'Kénitra',
+  'Tétouan',
+  'Safi',
+  'El Jadida',
+  'Nador',
+  'Beni Mellal',
+  'Khénifra',
+  'Mohammedia',
+  'Essaouira',
+  'Taza',
+  'Settat',
+  'Berrechid',
+];
+
+const PRODUCT_PREFIX = ['SoftSleep', 'Premium', 'Luxury', 'Classic', 'Eco', 'Royal', 'Cloud'];
+const PRODUCT_KIND = ['Sheet', 'Cover', 'Pillow', 'Set', 'Protector', 'Topper', 'Duvet'];
+
+function randomInt(min: number, max: number) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function randomPick<T>(arr: T[]): T {
+  return arr[randomInt(0, arr.length - 1)]!;
+}
+
+function randomCustomerName(i: number) {
+  return `${randomPick(FIRST_NAMES)} ${randomPick(LAST_NAMES)} #${i}`;
+}
+
+function randomStatus(): OrderStatus {
+  const r = Math.random();
+  if (r < 0.14) return 'PENDING';
+  if (r < 0.32) return 'IN_PROCESS';
+  if (r < 0.86) return 'DELIVERED';
+  return 'RETURNED';
+}
+
+function randomOrderDate(maxDaysBack: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - randomInt(0, maxDaysBack));
+  d.setHours(randomInt(8, 21), randomInt(0, 59), randomInt(0, 59), 0);
+  return d;
+}
+
+function weightedVariantPrice(base: number) {
+  return new Prisma.Decimal((base + randomInt(-15, 35) + Math.random()).toFixed(2));
+}
+
+async function main() {
+  console.log('Starting database seed…');
+  console.log(
+    `Volumes → orders: ${ORDER_COUNT}, products: ${PRODUCT_COUNT}, extra sales: ${EXTRA_SALES}`
+  );
+
+  await prisma.commissionSettings.create({
+    data: {
+      defaultRate: new Prisma.Decimal('10'),
+      useFixedAmount: false,
+    },
+  });
+
   const adminPassword = await bcrypt.hash('admin123', 10);
   const admin = await prisma.user.create({
     data: {
       name: 'Admin User',
       email: 'admin@matles.com',
       password: adminPassword,
-      role: 'ADMIN'
-    }
+      role: 'ADMIN',
+    },
   });
-  console.log('Created admin user:', admin.email);
 
-  // Create sales users
   const salesPassword = await bcrypt.hash('sales123', 10);
   const omar = await prisma.user.create({
     data: {
       name: 'Omar Khalid',
       email: 'omar@matles.com',
       password: salesPassword,
-      role: 'SALES'
-    }
+      role: 'SALES',
+    },
   });
-  console.log('Created sales user:', omar.email);
-
-  const aishaPassword = await bcrypt.hash('sales123', 10);
   const aisha = await prisma.user.create({
     data: {
       name: 'Aisha Rahman',
       email: 'aisha@matles.com',
-      password: aishaPassword,
-      role: 'SALES'
-    }
-  });
-  console.log('Created sales user:', aisha.email);
-
-  // Create products with variants
-  const product1 = await prisma.product.create({
-    data: {
-      name: 'Premium Matles Sheet',
-      sku: 'MTL-001',
-      description: 'High-quality premium matles sheet for ultimate comfort and durability',
-      inStock: true,
-      variants: {
-        create: [
-          { name: 'Demonstration 1', skuExt: '-V1', price: 120, weight: 1.5, stock: 50 },
-          { name: 'Demonstration 2', skuExt: '-V2', price: 150, weight: 2.0, stock: 40 },
-          { name: 'Demonstration 3', skuExt: '-V3', price: 180, weight: 2.5, stock: 30 }
-        ]
-      }
+      password: salesPassword,
+      role: 'SALES',
     },
-    include: { variants: true }
   });
-  console.log('Created product:', product1.name);
 
-  const product2 = await prisma.product.create({
-    data: {
-      name: 'Deluxe Matles Cover',
-      sku: 'MTL-002',
-      description: 'Luxurious matles cover with advanced protection and elegant design',
-      inStock: true,
-      variants: {
-        create: [
-          { name: 'Demonstration 1', skuExt: '-V1', price: 200, weight: 2.0, stock: 35 },
-          { name: 'Demonstration 2', skuExt: '-V2', price: 250, weight: 2.5, stock: 30 },
-          { name: 'Demonstration 3', skuExt: '-V3', price: 300, weight: 3.0, stock: 25 }
-        ]
-      }
-    },
-    include: { variants: true }
-  });
-  console.log('Created product:', product2.name);
-
-  const product3 = await prisma.product.create({
-    data: {
-      name: 'Comfort Matles Pillow',
-      sku: 'MTL-003',
-      description: 'Ergonomic matles pillow for perfect neck support and comfort',
-      inStock: false,
-      variants: {
-        create: [
-          { name: 'Demonstration 1', skuExt: '-V1', price: 80, weight: 0.8, stock: 0 },
-          { name: 'Demonstration 2', skuExt: '-V2', price: 100, weight: 1.0, stock: 0 },
-          { name: 'Demonstration 3', skuExt: '-V3', price: 120, weight: 1.2, stock: 0 }
-        ]
-      }
-    },
-    include: { variants: true }
-  });
-  console.log('Created product:', product3.name);
-
-  const product4 = await prisma.product.create({
-    data: {
-      name: 'Luxury Matles Set',
-      sku: 'MTL-004',
-      description: 'Complete luxury matles set including sheet, cover, and pillows',
-      inStock: true,
-      variants: {
-        create: [
-          { name: 'Demonstration 1', skuExt: '-V1', price: 400, weight: 4.0, stock: 20 },
-          { name: 'Demonstration 2', skuExt: '-V2', price: 500, weight: 5.0, stock: 15 },
-          { name: 'Demonstration 3', skuExt: '-V3', price: 600, weight: 6.0, stock: 10 }
-        ]
-      }
-    },
-    include: { variants: true }
-  });
-  console.log('Created product:', product4.name);
-
-  const product5 = await prisma.product.create({
-    data: {
-      name: 'Classic Matles Cover',
-      sku: 'MTL-005',
-      description: 'Traditional style matles cover with modern protection features',
-      inStock: true,
-      variants: {
-        create: [
-          { name: 'Demonstration 1', skuExt: '-V1', price: 150, weight: 1.8, stock: 45 },
-          { name: 'Demonstration 2', skuExt: '-V2', price: 180, weight: 2.2, stock: 35 },
-          { name: 'Demonstration 3', skuExt: '-V3', price: 210, weight: 2.6, stock: 25 }
-        ]
-      }
-    },
-    include: { variants: true }
-  });
-  console.log('Created product:', product5.name);
-
-  // Create stock history for each variant
-  for (const variant of product1.variants) {
-    await prisma.stockHistory.create({
+  const salesUsers = [omar, aisha];
+  for (let i = 0; i < EXTRA_SALES; i++) {
+    const u = await prisma.user.create({
       data: {
-        variantId: variant.id,
-        quantity: variant.stock,
-        type: "INITIAL",
-        reason: "Initial stock",
-        previousStock: 0,
-        newStock: variant.stock,
-        userId: aisha.id
-      }
+        name: `Sales Agent ${i + 1}`,
+        email: `agent${String(i + 1).padStart(2, '0')}@matles.test`,
+        password: salesPassword,
+        role: 'SALES',
+      },
     });
+    salesUsers.push(u);
   }
+  console.log(`Users → 1 admin, ${salesUsers.length} sales`);
 
-  for (const variant of product2.variants) {
-    await prisma.stockHistory.create({
-      data: {
-        variantId: variant.id,
-        quantity: variant.stock,
-        type: "INITIAL",
-        reason: "Initial stock",
-        previousStock: 0,
-        newStock: variant.stock,
-        userId: aisha.id
-      }
-    });
-  }
-
-  // Create some sample orders
-  const order1 = await prisma.order.create({
-    data: {
-      userId: omar.id,
-      customerName: 'Ahmed Al-Farsi',
-      status: 'DELIVERED',
-      totalAmount: 350.00,
-      commission: 35.00,
-      orderItems: {
-        create: [
-          {
-            variantId: product1.variants[0].id,
-            quantity: 2,
-            price: product1.variants[0].price
-          },
-          {
-            variantId: product2.variants[1].id,
-            quantity: 1,
-            price: product2.variants[1].price
-          }
-        ]
-      }
-    }
-  });
-  console.log('Created order:', order1.id);
-
-  const order2 = await prisma.order.create({
-    data: {
-      userId: aisha.id,
-      customerName: 'Fatima Al-Sayed',
-      status: 'IN_PROCESS',
-      totalAmount: 420.00,
-      commission: 42.00,
-      orderItems: {
-        create: [
-          {
-            variantId: product2.variants[0].id,
-            quantity: 2,
-            price: product2.variants[0].price
-          }
-        ]
-      }
-    }
-  });
-  console.log('Created order:', order2.id);
-
-  const order3 = await prisma.order.create({
-    data: {
-      userId: omar.id,
-      customerName: 'Mohammed Al-Jabri',
-      status: 'PENDING',
-      totalAmount: 280.00,
-      commission: 28.00,
-      orderItems: {
-        create: [
-          {
-            variantId: product1.variants[1].id,
-            quantity: 1,
-            price: product1.variants[1].price
-          },
-          {
-            variantId: product5.variants[0].id,
-            quantity: 1,
-            price: product5.variants[0].price
-          }
-        ]
-      }
-    }
-  });
-  console.log('Created order:', order3.id);
-
-  // Create delivery services
   const delivery1 = await prisma.deliveryService.create({
     data: {
       name: 'Express Delivery',
       active: true,
-      cities: JSON.stringify(['Riyadh', 'Jeddah', 'Dammam'])
-    }
+      cities: JSON.stringify(['Casablanca', 'Rabat', 'Marrakech', 'Tanger']),
+    },
   });
-  console.log('Created delivery service:', delivery1.name);
-
   const delivery2 = await prisma.deliveryService.create({
     data: {
       name: 'Standard Shipping',
       active: true,
-      cities: JSON.stringify(['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam'])
-    }
+      cities: JSON.stringify([
+        'Casablanca',
+        'Rabat',
+        'Fès',
+        'Meknès',
+        'Agadir',
+        'Oujda',
+        'Kénitra',
+      ]),
+    },
   });
-  console.log('Created delivery service:', delivery2.name);
-
   const delivery3 = await prisma.deliveryService.create({
     data: {
-      name: 'Economy Delivery',
+      name: 'Economy (inactive demo)',
       active: false,
-      cities: JSON.stringify(['Riyadh', 'Jeddah'])
-    }
+      cities: JSON.stringify(['Casablanca', 'Mohammedia']),
+    },
   });
-  console.log('Created delivery service:', delivery3.name);
 
-  // Stress test service with a very large city list (200+ cities)
-  const coreMoroccanCities = [
-    'Casablanca', 'Rabat', 'Fes', 'Marrakech', 'Tangier', 'Agadir', 'Meknes', 'Oujda', 'Kenitra', 'Tetouan',
-    'Safi', 'ElJadida', 'Nador', 'BeniMellal', 'Taza', 'Khouribga', 'Settat', 'Larache', 'KsarElKebir', 'Guelmim',
-    'Errachidia', 'Ouarzazate', 'Taroudant', 'Ifrane', 'Azrou', 'AlHoceima', 'Berkane', 'Taourirt', 'SidiKacem', 'SidiSlimane',
-    'Youssoufia', 'Mohammedia', 'Essaouira', 'Dakhla', 'Laayoune', 'Khemisset', 'Chefchaouen', 'Tiflet', 'Temara', 'Sale',
-    'Berrechid', 'Skhirat', 'Bouskoura', 'AinHarrouda', 'Mediouna', 'Fnideq', 'Martil', 'Asilah', 'Sefrou', 'Khenifra',
-    'Bousselham', 'Azemmour', 'BenGuerir', 'FquihBenSalah', 'Jerada', 'Tinghir', 'Tiznit', 'SidiIfni', 'Zagora', 'Midelt',
-    'Guercif', 'HadSoualem', 'DarBouazza', 'BeniAnsar', 'AitMelloul', 'Inzegane', 'Imzouren', 'SoukLarbaa', 'Ouazzane', 'Bouznika'
+  const manyCities = [
+    ...CITIES,
+    ...Array.from({ length: 40 }, (_, i) => `VilleTest${String(i + 1).padStart(2, '0')}`),
   ];
-
-  const regionalCities = [
-    'AinAouda', 'AitOurir', 'AitBaha', 'AitIshaq', 'AitYadine', 'BabBerred', 'BabTaza', 'Bhalil', 'Biougra', 'Bouarfa',
-    'Boujdour', 'Boulemane', 'BouznikaPlage', 'Demnate', 'Drarga', 'ElAiounSidiMellouk', 'ElHajeb', 'ElKelaaDesSraghna', 'ElMansouria', 'ElMenzel',
-    'Farkhana', 'Figuig', 'Ghafsai', 'Goulmima', 'HadKourt', 'Imintanoute', 'JerfElMelha', 'KariaBaMohamed', 'KasbaTadla', 'KelaatMguna',
-    'KsarSghir', 'Lqliaa', 'Mdiq', 'MechraaBelKsiri', 'Mehdia', 'Missour', 'MoulayBousselham', 'MoulayIdriss', 'Mrirt', 'NzaletBeniAmmar',
-    'Oualidia', 'OuedAmlil', 'OuladTeima', 'OuladYaich', 'RasElMa', 'Rich', 'Rommani', 'SabaaAiyoun', 'Saidia', 'SidiAllalBahraoui',
-    'SidiAllalTazi', 'SidiBennour', 'SidiBibi', 'SidiBouOthmane', 'SidiRahhal', 'SidiYahyaElGharb', 'Skoura', 'Smara', 'SoukElArbaa', 'Tahla'
-  ];
-
-  const loadTestCities = Array.from({ length: 90 }, (_, i) => `TestCity${String(i + 1).padStart(3, '0')}`);
-  const stressCities = [...coreMoroccanCities, ...regionalCities, ...loadTestCities];
-
-  const deliveryStress = await prisma.deliveryService.create({
+  const deliveryBulk = await prisma.deliveryService.create({
     data: {
-      name: 'Stress Test Delivery 200 Cities',
+      name: 'National — many cities',
       active: true,
-      cities: JSON.stringify(stressCities)
-    }
+      cities: JSON.stringify(manyCities),
+    },
   });
-  console.log('Created delivery service:', deliveryStress.name, `(${stressCities.length} cities)`);
 
-  console.log('Database seed completed successfully!');
+  const activeDeliveryIds = [delivery1.id, delivery2.id, deliveryBulk.id];
+
+  for (let c = 0; c < 24; c++) {
+    await prisma.confirmationUser.create({
+      data: {
+        name: `Confirm Team ${c + 1}`,
+        phone: `+2126${String(randomInt(10_000_000, 99_999_999))}`,
+        email: `confirm${c + 1}@matles.test`,
+        salesmanId: salesUsers[c % salesUsers.length]!.id,
+      },
+    });
+  }
+  console.log('Confirmation users: 24');
+
+  const confirmationRows = await prisma.confirmationUser.findMany({
+    select: { id: true },
+  });
+
+  console.log(`Creating ${PRODUCT_COUNT} products with variants…`);
+  for (let p = 0; p < PRODUCT_COUNT; p++) {
+    const name = `${randomPick(PRODUCT_PREFIX)} ${randomPick(PRODUCT_KIND)} ${p + 1}`;
+    const sku = `SEED-${String(p + 1).padStart(4, '0')}`;
+    const base = 85 + (p % 40) * 12;
+    const variantCount = randomInt(2, 4);
+    const variantDefs = Array.from({ length: variantCount }, (_, k) => ({
+      name: ['S / 90', 'M / 140', 'L / 160', 'XL / 180'][k % 4] ?? `Var ${k + 1}`,
+      skuExt: `-V${k + 1}`,
+      price: weightedVariantPrice(base + k * 18),
+      weight: new Prisma.Decimal((1.2 + k * 0.35).toFixed(2)),
+      stock: randomInt(80, 400),
+    }));
+
+    await prisma.product.create({
+      data: {
+        name,
+        sku,
+        description: `Seed product ${p + 1} — comfort & test data.`,
+        inStock: true,
+        variants: { create: variantDefs },
+      },
+    });
+  }
+
+  const allVariants = await prisma.productVariant.findMany({
+    select: { id: true, price: true },
+  });
+
+  if (allVariants.length === 0) {
+    throw new Error('No variants created');
+  }
+
+  console.log(`Stock history (INITIAL) for ${allVariants.length} variants…`);
+  const withStock = await prisma.productVariant.findMany({
+    select: { id: true, stock: true },
+  });
+  const historyData = withStock.map((v) => ({
+    variantId: v.id,
+    quantity: v.stock,
+    type: 'INITIAL' as const,
+    reason: 'Seed initial stock',
+    previousStock: 0,
+    newStock: v.stock,
+    userId: admin.id,
+  }));
+  for (let i = 0; i < historyData.length; i += 500) {
+    await prisma.stockHistory.createMany({ data: historyData.slice(i, i + 500) });
+  }
+
+  console.log(`Creating ${ORDER_COUNT} orders (batched)…`);
+  const TX_SIZE = 40;
+  let created = 0;
+  for (let start = 0; start < ORDER_COUNT; start += TX_SIZE) {
+    const end = Math.min(start + TX_SIZE, ORDER_COUNT);
+    await prisma.$transaction(
+      Array.from({ length: end - start }, (_, j) => {
+        const o = start + j;
+        const lineCount = randomInt(1, 4);
+        const used = new Set<number>();
+        const lines: { variantId: number; quantity: number; price: Prisma.Decimal }[] = [];
+        let total = 0;
+        let commission = 0;
+
+        for (let L = 0; L < lineCount; L++) {
+          let tries = 0;
+          let v = randomPick(allVariants);
+          while (used.has(v.id) && tries < 30) {
+            v = randomPick(allVariants);
+            tries++;
+          }
+          used.add(v.id);
+          const qty = randomInt(1, 5);
+          const price = Number(v.price);
+          const lineTotal = Math.round(price * qty * 100) / 100;
+          total += lineTotal;
+          commission += Math.round(lineTotal * 0.1 * 100) / 100;
+          lines.push({
+            variantId: v.id,
+            quantity: qty,
+            price: new Prisma.Decimal(price.toFixed(2)),
+          });
+        }
+
+        const status = randomStatus();
+        const createdAt = randomOrderDate(150);
+        const hasTracking =
+          (status === 'IN_PROCESS' || status === 'DELIVERED') && Math.random() < 0.75;
+
+        const deliveryServiceId =
+          Math.random() < 0.92 ? randomPick(activeDeliveryIds) : null;
+
+        return prisma.order.create({
+          data: {
+            userId: randomPick(salesUsers)!.id,
+            customerName: randomCustomerName(o),
+            status,
+            totalAmount: new Prisma.Decimal(total.toFixed(2)),
+            commission: new Prisma.Decimal(commission.toFixed(2)),
+            createdAt,
+            address: `Av. Seed ${(o % 200) + 1}, rés. Test`,
+            phone: `06${randomInt(10_000_000, 99_999_999)}`,
+            trackingCode: hasTracking ? `TRK-SEED-${o}-${randomInt(1000, 9999)}` : null,
+            city: randomPick(CITIES),
+            deliveryServiceId,
+            note: o % 17 === 0 ? 'Commande seed — note test.' : null,
+            confirmationUserId:
+              Math.random() < 0.45 ? randomPick(confirmationRows)!.id : null,
+            orderItems: { create: lines },
+          },
+        });
+      })
+    );
+    created = end;
+    if (created % 200 === 0 || created === ORDER_COUNT) {
+      console.log(`  … ${created} / ${ORDER_COUNT} orders`);
+    }
+  }
+
+  const activityTypes = ['ORDER_VIEW', 'LOGIN', 'STOCK_CHECK', 'SETTINGS_VIEW'];
+  const activityCount = Math.min(500, Math.floor(ORDER_COUNT / 3));
+  for (let a = 0; a < activityCount; a++) {
+    await prisma.activity.create({
+      data: {
+        userId: randomPick(salesUsers)!.id,
+        type: randomPick(activityTypes),
+        description: `Seed activity ${a + 1}`,
+        details: JSON.stringify({ seed: true, idx: a }),
+        createdAt: randomOrderDate(60),
+      },
+    });
+  }
+
+  console.log('Seed summary:');
+  console.log(`  • Users: admin@matles.com / admin123`);
+  console.log(`  • Sales: omar@matles.com, aisha@matles.com / sales123`);
+  console.log(`  • Extra sales: agent01@matles.test … (${EXTRA_SALES} accounts) / sales123`);
+  console.log(`  • Products: ${PRODUCT_COUNT}, variants: ${allVariants.length}`);
+  console.log(`  • Orders: ${ORDER_COUNT}`);
+  console.log('Database seed completed successfully.');
 }
 
 main()

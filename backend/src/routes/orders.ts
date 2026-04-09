@@ -97,6 +97,7 @@ router.get('/', authMiddleware, async (req, res) => {
       search, 
       salesman, 
       deliveryService,
+      productId,
       startDate, 
       endDate,
       dateFilter 
@@ -127,8 +128,25 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     if (deliveryService && deliveryService !== 'all') {
-      where.deliveryService = {
-        name: deliveryService.toString()
+      const ds = deliveryService.toString();
+      // In production, filtering by ID is safer than name (case/whitespace/collation).
+      if (!Number.isNaN(Number(ds))) {
+        where.deliveryServiceId = Number(ds);
+      } else {
+        // Backward compatibility: allow name-based filter
+        where.deliveryService = {
+          name: ds
+        };
+      }
+    }
+
+    if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
+      where.orderItems = {
+        some: {
+          variant: {
+            productId: Number(productId)
+          }
+        }
       };
     }
 

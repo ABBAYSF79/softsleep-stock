@@ -20,6 +20,7 @@ import Invoice from "@/pages/Invoice";
 import InvoicesTracking from "@/pages/InvoicesTracking";
 import Finance from "@/pages/Finance";
 import Leaderboard from "@/pages/Leaderboard";
+import ProductOverview from "@/pages/ProductOverview";
 import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
 import AdvancedEdit from "@/pages/AdvancedEdit";
@@ -59,6 +60,11 @@ const App = () => (
             <Route path="/sales" element={
               <ProtectedRoute>
                 <SalesOverview />
+              </ProtectedRoute>
+            } />
+            <Route path="/product-overview" element={
+              <ProtectedRoute>
+                <ProductOverview />
               </ProtectedRoute>
             } />
             <Route path="/users" element={

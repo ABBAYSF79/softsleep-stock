@@ -373,7 +373,7 @@ const Orders = () => {
             <SelectContent>
               <SelectItem value="all">All Delivery Services</SelectItem>
               {deliveryServices.map((service: any) => (
-                <SelectItem key={service.id} value={service.name}>
+                <SelectItem key={service.id} value={service.id.toString()}>
                   {service.name}
                 </SelectItem>
               ))}
@@ -414,7 +414,15 @@ const Orders = () => {
                 <TableCell className="font-medium">{order.id}</TableCell>
                 <TableCell>{order.customerName}</TableCell>
                 <TableCell>{order.phone || '-'}</TableCell>
-                <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>
+                  {new Date(order.createdAt).toLocaleString(undefined, {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </TableCell>
                 <TableCell><OrderStatusBadge status={order.status} /></TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">

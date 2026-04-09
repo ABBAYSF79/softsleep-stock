@@ -75,6 +75,7 @@ export interface OrderFilters {
   search?: string;
   salesman?: string;
   deliveryService?: string;
+  productId?: string;
   dateFilter?: string;
   startDate?: Date;
   endDate?: Date;
@@ -160,14 +161,18 @@ export const useNextInvoiceReference = () => {
   });
 };
 
-export const usePaginatedOrders = (filters: OrderFilters) => {
+export const usePaginatedOrders = (
+  filters: OrderFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
     queryKey: ['orders-paginated', filters],
     queryFn: async () => {
       const { data } = await api.get('/orders', { params: filters });
       return data;
     },
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching new data
+    placeholderData: (previousData) => previousData,
+    enabled: options?.enabled ?? true,
   });
 };
 

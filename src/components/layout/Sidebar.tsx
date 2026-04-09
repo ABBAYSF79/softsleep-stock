@@ -18,7 +18,8 @@ import {
   BarChart3,
   UserCheck,
   Users2,
-  Lock
+  Lock,
+  LayoutGrid
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -57,6 +58,11 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       title: "Sales Overview",
       icon: <LineChart className="h-5 w-5" />,
       path: "/sales",
+    },
+    {
+      title: "Product overview",
+      icon: <LayoutGrid className="h-5 w-5" />,
+      path: "/product-overview",
     },
     {
       title: "Invoice",
