@@ -77,6 +77,13 @@ const Orders = () => {
   const isAdmin = user?.role === 'ADMIN';
   const { data: users = [] } = useUsers();
   const { data: deliveryServices = [] } = useDeliveryServices();
+  const selectedDeliveryService =
+    deliveryServiceFilter !== "all"
+      ? deliveryServices.find(
+          (s: { id: number }) => String(s.id) === deliveryServiceFilter
+        )
+      : undefined;
+
   const uniqueSalesmen = users
     .filter((u: any) => u.active !== false)
     .map((u: any) => u.name)
@@ -95,7 +102,12 @@ const Orders = () => {
     status: statusFilter,
     search: debouncedSearchTerm,
     salesman: salesmanFilter,
-    deliveryService: deliveryServiceFilter
+    ...(selectedDeliveryService
+      ? {
+          deliveryServiceId: selectedDeliveryService.id,
+          deliveryServiceName: selectedDeliveryService.name,
+        }
+      : {}),
   });
   
   // Delete mutation

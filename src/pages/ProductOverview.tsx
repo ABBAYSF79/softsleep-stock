@@ -41,6 +41,7 @@ import {
   ResponsiveContainer,
   Cell,
   LabelList,
+  Rectangle,
 } from "recharts";
 import {
   Package,
@@ -120,17 +121,17 @@ function barFillByRank(rank: number, indexPalette: number) {
   return CHART_COLORS[indexPalette % CHART_COLORS.length]!;
 }
 
+/** Prefix on Y-axis category so we detect product headers (Recharts tick only gets the string value). */
+const VARIANT_Y_HEADER_PREFIX = "\u2063";
+
 function VariantBarYAxisTick(
-  props: Partial<{
-    x: number;
-    y: number;
-    payload: { value?: string; payload?: { isHeader?: boolean } };
-  }>
+  props: Partial<{ x: number; y: number; payload: { value?: string } }>
 ) {
   const x = props.x ?? 0;
   const y = props.y ?? 0;
-  const label = String(props.payload?.value ?? "");
-  const isHeader = Boolean(props.payload?.payload?.isHeader);
+  const raw = String(props.payload?.value ?? "");
+  const isHeader = raw.startsWith(VARIANT_Y_HEADER_PREFIX);
+  const label = isHeader ? raw.slice(VARIANT_Y_HEADER_PREFIX.length) : raw;
 
   if (isHeader) {
     return (
@@ -146,6 +147,38 @@ function VariantBarYAxisTick(
     <text x={x} y={y} dy={3} textAnchor="end" fill="#475569" fontSize={10}>
       {label}
     </text>
+  );
+}
+
+type VariantChartRow = {
+  name: string;
+  fullName: string;
+  totalQty: number;
+  fill: string;
+  isHeader?: boolean;
+};
+
+function VariantBarShape(props: {
+  fill?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  payload?: VariantChartRow;
+}) {
+  const { x = 0, y = 0, width = 0, height = 0, fill, payload } = props;
+  if (payload?.isHeader || width <= 0) {
+    return <g />;
+  }
+  return (
+    <Rectangle
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      fill={fill}
+      radius={[0, 4, 4, 0]}
+    />
   );
 }
 
@@ -217,6 +250,26 @@ type OverviewRow = {
   quantity: number;
   productId: number;
 };
+
+function lineItemProductId(item: {
+  product?: { id?: number };
+  productId?: number;
+  variant?: { product?: { id?: number } };
+}): number | undefined {
+  const p = item.product ?? item.variant?.product;
+  return p?.id ?? item.productId;
+}
+
+function parseProductFilterId(productFilter: string): number | null {
+  if (productFilter === "all" || productFilter === "") return null;
+  const n = Number(productFilter);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatOrderTableDate(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : format(d, "MMM d, yyyy");
+}
 
 const ProductOverview = () => {
   const [dateFilter, setDateFilter] = useState("thisMonth");
@@ -315,6 +368,7 @@ const ProductOverview = () => {
     data: ordersPayload,
     isLoading,
     error,
+    refetch,
   } = usePaginatedOrders(orderQueryParams, { enabled: ordersQueryEnabled });
 
   const prevOrderQueryParams = useMemo((): OrderFilters | null => {
@@ -355,16 +409,25 @@ const ProductOverview = () => {
       ? (prevOrdersPayload?.data ?? [])
       : [];
 
+  const filterProductId = parseProductFilterId(productFilter);
+
   const prevTotalQty = useMemo(() => {
     if (!compareEnabled || !ordersQueryEnabled) return null;
     let sum = 0;
     for (const o of prevOrders) {
       for (const item of o.items ?? []) {
+        const pid = lineItemProductId(item);
+        if (
+          filterProductId !== null &&
+          (pid === undefined || Number(pid) !== filterProductId)
+        ) {
+          continue;
+        }
         sum += item.quantity ?? 0;
       }
     }
     return sum;
-  }, [compareEnabled, ordersQueryEnabled, prevOrders]);
+  }, [compareEnabled, ordersQueryEnabled, prevOrders, filterProductId]);
   const totalFromApi = ordersQueryEnabled
     ? (ordersPayload?.meta?.total ?? orders.length)
     : 0;
@@ -390,11 +453,20 @@ const ProductOverview = () => {
     }
     >();
 
+    const onlyProductId = parseProductFilterId(productFilter);
+
     for (const order of orders) {
       const items = order.items ?? [];
       for (const item of items) {
         const product = item.product ?? item.variant?.product;
         const productId = product?.id ?? item.productId;
+        if (
+          onlyProductId !== null &&
+          (productId === undefined ||
+            Number(productId) !== onlyProductId)
+        ) {
+          continue;
+        }
         const productName =
           product?.name ?? item.variant?.product?.name ?? "—";
         const dimensionLabel = formatVariantDetails(item);
@@ -470,7 +542,7 @@ const ProductOverview = () => {
       distinctOrders,
       totalUnits,
     };
-  }, [orders]);
+  }, [orders, productFilter]);
 
   const productOptions = useMemo(
     () => [
@@ -485,9 +557,9 @@ const ProductOverview = () => {
 
   const chartDataProducts = useMemo(() => {
     let data = productQtyStats.filter((d) => d.totalQty > 0);
-    if (productFilter !== "all") {
-      const id = Number(productFilter);
-      data = data.filter((d) => d.productId === id);
+    const pid = parseProductFilterId(productFilter);
+    if (pid !== null) {
+      data = data.filter((d) => Number(d.productId) === pid);
     }
     return data.slice(0, 24).map((d, idx) => {
       const rank = idx + 1;
@@ -502,13 +574,13 @@ const ProductOverview = () => {
     });
   }, [productQtyStats, productFilter]);
 
-  const chartDataVariants = useMemo(() => {
+  const chartDataVariants = useMemo((): VariantChartRow[] => {
     let data = variantQtyStats
       .filter((d) => d.totalQty > 0)
       .map((d) => ({ ...d }));
-    if (productFilter !== "all") {
-      const id = Number(productFilter);
-      data = data.filter((d) => d.productId === id);
+    const pid = parseProductFilterId(productFilter);
+    if (pid !== null) {
+      data = data.filter((d) => Number(d.productId) === pid);
     }
 
     const productRank = new Map<number, number>();
@@ -533,19 +605,9 @@ const ProductOverview = () => {
       }
     }
 
-    // Build grouped list: product header once, then variants.
-    type Row = {
-      name: string;
-      fullName: string;
-      totalQty: number | null;
-      fill: string;
-      isHeader?: boolean;
-    };
-
-    const grouped: Row[] = [];
+    const grouped: VariantChartRow[] = [];
     let currentPid: number | null = null;
 
-    // Allow more lines because headers take rows too.
     const MAX_LINES = 42;
 
     for (const d of data) {
@@ -562,9 +624,9 @@ const ProductOverview = () => {
       if (currentPid !== d.productId) {
         currentPid = d.productId;
         grouped.push({
-          name: productLabel,
+          name: `${VARIANT_Y_HEADER_PREFIX}${productLabel}`,
           fullName: d.productName,
-          totalQty: null,
+          totalQty: 0,
           fill: "transparent",
           isHeader: true,
         });
@@ -586,10 +648,15 @@ const ProductOverview = () => {
   const trendData = useMemo(() => {
     if (!dateRange?.from || !dateRange?.to) return [];
     const byDay = new Map<string, number>();
+    const pidFilter = parseProductFilterId(productFilter);
     for (const o of orders) {
       const key = format(new Date(o.createdAt), "yyyy-MM-dd");
       let dayQty = 0;
       for (const item of o.items ?? []) {
+        if (pidFilter !== null) {
+          const pid = lineItemProductId(item);
+          if (pid === undefined || Number(pid) !== pidFilter) continue;
+        }
         dayQty += item.quantity ?? 0;
       }
       byDay.set(key, (byDay.get(key) ?? 0) + dayQty);
@@ -607,7 +674,7 @@ const ProductOverview = () => {
       cur = addDays(cur, 1);
     }
     return out;
-  }, [orders, dateRange]);
+  }, [orders, dateRange, productFilter]);
 
   const insights = useMemo(() => {
     if (!distinctOrders && rows.length === 0) return null;
@@ -678,7 +745,18 @@ const ProductOverview = () => {
   if (error) {
     return (
       <MainLayout>
-        <p className="text-destructive">Failed to load orders.</p>
+        <div className="flex flex-col items-center justify-center gap-4 py-16">
+          <p className="text-destructive font-medium">
+            Failed to load orders.
+          </p>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            {(error as { message?: string })?.message ||
+              "Check your connection and try again."}
+          </p>
+          <Button type="button" variant="outline" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
       </MainLayout>
     );
   }
@@ -1022,7 +1100,7 @@ const ProductOverview = () => {
                               position="right"
                               fill="#64748b"
                               fontSize={11}
-                              formatter={(v: number) => `${v}`}
+                              formatter={(v) => `${Number(v)}`}
                             />
                             {chartDataProducts.map((row, i) => (
                               <Cell
@@ -1072,12 +1150,36 @@ const ProductOverview = () => {
                             reversed
                           />
                           <Tooltip
-                            formatter={(v: number) => [v, "Qty"]}
-                            labelFormatter={(_, payload) =>
-                              (payload?.[0]?.payload?.fullName as string) ?? ""
-                            }
+                            cursor={{ fill: "hsl(var(--muted) / 0.15)" }}
+                            content={({ active, payload }) => {
+                              if (!active || !payload?.[0]) return null;
+                              const row = payload[0]
+                                .payload as VariantChartRow;
+                              if (row.isHeader) {
+                                return (
+                                  <div className="rounded-md border bg-popover px-3 py-2 text-sm shadow-md">
+                                    <p className="font-semibold text-foreground">
+                                      {row.fullName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Product
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="rounded-md border bg-popover px-3 py-2 text-sm shadow-md">
+                                  <p className="font-medium text-foreground">
+                                    {row.fullName}
+                                  </p>
+                                  <p className="text-muted-foreground">
+                                    {row.totalQty} pcs
+                                  </p>
+                                </div>
+                              );
+                            }}
                           />
-                          <Bar dataKey="totalQty" radius={[0, 4, 4, 0]}>
+                          <Bar dataKey="totalQty" shape={VariantBarShape}>
                             {chartDataVariants.map((entry, i) => (
                               <Cell key={i} fill={entry.fill} />
                             ))}
@@ -1150,10 +1252,7 @@ const ProductOverview = () => {
                                   {row.customerPhone}
                                 </TableCell>
                                 <TableCell>
-                                  {format(
-                                    new Date(row.orderDate),
-                                    "MMM d, yyyy"
-                                  )}
+                                  {formatOrderTableDate(row.orderDate)}
                                 </TableCell>
                                 <TableCell>{row.city}</TableCell>
                                 <TableCell>

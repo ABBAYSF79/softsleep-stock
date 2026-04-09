@@ -6,6 +6,76 @@ import { authMiddleware } from '../middleware/auth';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+/** Express can expose duplicate keys as string[]; normalize to a single trimmed string. */
+function firstQueryString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const v = Array.isArray(value) ? value[0] : value;
+  const s = String(v).trim();
+  return s.length ? s : undefined;
+}
+
+function parsePositiveInt(value: string | undefined): number | null {
+  if (!value || value === 'all') return null;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Resolve delivery filter from several query shapes (prod-safe):
+ * - deliveryServiceId=12 (preferred)
+ * - deliveryService=12 (numeric string → id)
+ * - deliveryService=Some+Name (substring match on service name)
+ * - deliveryServiceName=… (explicit name / partial name)
+ */
+async function applyDeliveryServiceFilter(
+  where: Record<string, unknown>,
+  query: express.Request['query']
+) {
+  const idParam = parsePositiveInt(firstQueryString(query.deliveryServiceId));
+  const legacyParam = firstQueryString(query.deliveryService);
+  const nameParam = firstQueryString(query.deliveryServiceName);
+
+  let resolvedId: number | null = idParam;
+
+  if (resolvedId === null && legacyParam && legacyParam !== 'all') {
+    if (/^\d+$/.test(legacyParam)) {
+      resolvedId = parsePositiveInt(legacyParam);
+    }
+  }
+
+  if (resolvedId !== null) {
+    where.deliveryServiceId = resolvedId;
+    return;
+  }
+
+  const nameFromDedicated =
+    nameParam && nameParam !== 'all' ? nameParam.trim() : '';
+  const nameFromLegacy =
+    legacyParam &&
+    legacyParam !== 'all' &&
+    !/^\d+$/.test(legacyParam.trim())
+      ? legacyParam.trim()
+      : '';
+  const nameSearch = nameFromDedicated || nameFromLegacy;
+
+  if (!nameSearch) return;
+
+  // Case-insensitive partial match (works across MySQL collations)
+  const likePattern = `%${nameSearch.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+  const rows = await prisma.$queryRaw<{ id: number }[]>`
+    SELECT id FROM DeliveryService WHERE LOWER(name) LIKE LOWER(${likePattern})
+  `;
+  const matchingIds = [...new Set(rows.map((r) => r.id))];
+
+  if (matchingIds.length === 0) {
+    where.id = { in: [] };
+  } else if (matchingIds.length === 1) {
+    where.deliveryServiceId = matchingIds[0];
+  } else {
+    where.deliveryServiceId = { in: matchingIds };
+  }
+}
+
 // Get order statistics
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
@@ -96,7 +166,6 @@ router.get('/', authMiddleware, async (req, res) => {
       status, 
       search, 
       salesman, 
-      deliveryService,
       productId,
       startDate, 
       endDate,
@@ -127,18 +196,7 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     }
 
-    if (deliveryService && deliveryService !== 'all') {
-      const ds = deliveryService.toString();
-      // In production, filtering by ID is safer than name (case/whitespace/collation).
-      if (!Number.isNaN(Number(ds))) {
-        where.deliveryServiceId = Number(ds);
-      } else {
-        // Backward compatibility: allow name-based filter
-        where.deliveryService = {
-          name: ds
-        };
-      }
-    }
+    await applyDeliveryServiceFilter(where, req.query);
 
     if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
       where.orderItems = {
