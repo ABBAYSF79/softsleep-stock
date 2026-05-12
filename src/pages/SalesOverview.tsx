@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ import {
   Bar
 } from 'recharts';
 import { Search, Calendar, Download, Eye, DollarSign, ShoppingCart, TrendingUp, Package } from "lucide-react";
-import { useOrders, useUsers } from "@/hooks/useApi";
+import { useDeliveryServices, useOrders, useUsers } from "@/hooks/useApi";
 import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, startOfDay, endOfDay } from "date-fns";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
@@ -62,14 +62,20 @@ const getStatusBadge = (status: string) => {
 const SalesOverview = () => {
   const { data: orders, isLoading } = useOrders();
   const { data: users, isLoading: isLoadingUsers } = useUsers();
+  const { data: deliveryServices, isLoading: isLoadingDeliveryServices } = useDeliveryServices();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [userFilter, setUserFilter] = useState<string>("ALL");
+  const [deliveryServiceFilter, setDeliveryServiceFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const [dateFilter, setDateFilter] = useState<string>("custom");
   const itemsPerPage = 10;
   const { user } = useAuth();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateRange, statusFilter, userFilter, deliveryServiceFilter, dateFilter]);
 
   // Filter orders based on search term, date range, status, and user
   const filteredOrders = orders?.filter(order => {
@@ -87,8 +93,12 @@ const SalesOverview = () => {
     const matchesStatus = statusFilter === "ALL" || order.status === statusFilter;
     
     const matchesUser = userFilter === "ALL" || order.salesman?.id?.toString() === userFilter;
+
+    const matchesDeliveryService =
+      deliveryServiceFilter === "ALL" ||
+      order.deliveryService?.id?.toString() === deliveryServiceFilter;
     
-    return matchesSearch && matchesDate && matchesStatus && matchesUser;
+    return matchesSearch && matchesDate && matchesStatus && matchesUser && matchesDeliveryService;
   }) || [];
 
   // Handle date filter changes
@@ -221,7 +231,7 @@ const SalesOverview = () => {
     document.body.removeChild(link);
   };
 
-  if (isLoading || isLoadingUsers) {
+  if (isLoading || isLoadingUsers || isLoadingDeliveryServices) {
     return <MainLayout><div>Loading...</div></MainLayout>;
   }
 
@@ -239,7 +249,7 @@ const SalesOverview = () => {
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -289,6 +299,19 @@ const SalesOverview = () => {
               {users?.map((user) => (
                 <SelectItem key={user.id} value={user.id.toString()}>
                   {user.name} ({user.role})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={deliveryServiceFilter} onValueChange={setDeliveryServiceFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by delivery service" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Delivery Services</SelectItem>
+              {deliveryServices?.map((service) => (
+                <SelectItem key={service.id} value={service.id.toString()}>
+                  {service.name}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -1,5 +1,5 @@
 // src/pages/Orders.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { BarcodeDialog } from "@/components/orders/BarcodeDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePaginatedOrders, useOrders, useDeleteOrder, useDeliveryServices, useUsers } from "@/hooks/useApi";
+import { usePaginatedOrders, useDeleteOrder, useDeliveryServices, useUsers } from "@/hooks/useApi";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { TrackingCodeCell } from "@/components/orders/TrackingCodeCell";
@@ -42,6 +42,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportOrdersToPdf } from "@/utils/pdf-export";
 import { formatOrdersToText } from "@/utils/text-export";
+import { Badge } from "@/components/ui/badge";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const Orders = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -61,33 +63,102 @@ const Orders = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
 
-  const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [salesmanFilter, setSalesmanFilter] = useState("all");
-  const [deliveryServiceFilter, setDeliveryServiceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [salesmanIdFilter, setSalesmanIdFilter] = useState("all");
+  const [deliveryServiceIdFilter, setDeliveryServiceIdFilter] = useState("all");
+
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   
   // Debounce search term to avoid too many requests
-  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const debouncedSearchTerm = useDebounce(searchTerm, 150);
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const { data: users = [] } = useUsers();
   const { data: deliveryServices = [] } = useDeliveryServices();
-  const selectedDeliveryService =
-    deliveryServiceFilter !== "all"
-      ? deliveryServices.find(
-          (s: { id: number }) => String(s.id) === deliveryServiceFilter
-        )
-      : undefined;
 
-  const uniqueSalesmen = users
-    .filter((u: any) => u.active !== false)
-    .map((u: any) => u.name)
-    .sort();
+  useEffect(() => {
+    if (!isAdmin) {
+      setSalesmanIdFilter("all");
+    }
+  }, [isAdmin]);
+
+  const salesmanOptions = useMemo(() => {
+    if (!isAdmin) return [];
+    const rows = (users as any[])
+      .filter((u) => u && u.active !== false)
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    return [
+      { label: "All salesmen", value: "all" },
+      ...rows.map((u) => ({ label: u.name, value: String(u.id) })),
+    ];
+  }, [users, isAdmin]);
+
+  const deliveryServiceOptions = useMemo(() => {
+    const rows = (deliveryServices as any[])
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    return [
+      { label: "All delivery services", value: "all" },
+      ...rows.map((s) => ({ label: s.name, value: String(s.id) })),
+    ];
+  }, [deliveryServices]);
+
+  const activeFilters = useMemo(() => {
+    const items: { key: string; label: string }[] = [];
+    if (statusFilter !== "all") {
+      const statusLabel =
+        Object.values(ORDER_STATUSES).find(
+          (s) => s.value.toLowerCase() === statusFilter.toLowerCase()
+        )?.label || statusFilter;
+      items.push({ key: "status", label: `Status: ${statusLabel}` });
+    }
+    if (isAdmin && salesmanIdFilter !== "all") {
+      const salesmanLabel =
+        (users as any[]).find((u) => String(u.id) === String(salesmanIdFilter))?.name ||
+        String(salesmanIdFilter);
+      items.push({ key: "salesman", label: `Salesman: ${salesmanLabel}` });
+    }
+    if (deliveryServiceIdFilter !== "all") {
+      const deliveryLabel =
+        (deliveryServices as any[]).find(
+          (s) => String(s.id) === String(deliveryServiceIdFilter)
+        )?.name || String(deliveryServiceIdFilter);
+      items.push({ key: "delivery", label: `Delivery: ${deliveryLabel}` });
+    }
+    return items;
+  }, [statusFilter, salesmanIdFilter, deliveryServiceIdFilter, isAdmin, users, deliveryServices]);
+
+  const clearAllFilters = () => {
+    setStatusFilter("all");
+    setSalesmanIdFilter("all");
+    setDeliveryServiceIdFilter("all");
+  };
+
+  const paginatedFilters = useMemo(
+    () => ({
+      page: currentPage,
+      limit: itemsPerPage,
+      status: statusFilter,
+      search: debouncedSearchTerm,
+      ...(isAdmin && salesmanIdFilter !== "all" ? { salesmanId: salesmanIdFilter } : {}),
+      ...(deliveryServiceIdFilter !== "all" ? { deliveryServiceId: deliveryServiceIdFilter } : {}),
+    }),
+    [
+      currentPage,
+      itemsPerPage,
+      statusFilter,
+      debouncedSearchTerm,
+      isAdmin,
+      salesmanIdFilter,
+      deliveryServiceIdFilter,
+    ]
+  );
 
   // Fetch paginated orders
   const { 
@@ -96,19 +167,7 @@ const Orders = () => {
     error, 
     refetch, 
     isRefetching 
-  } = usePaginatedOrders({
-    page: currentPage,
-    limit: itemsPerPage,
-    status: statusFilter,
-    search: debouncedSearchTerm,
-    salesman: salesmanFilter,
-    ...(selectedDeliveryService
-      ? {
-          deliveryServiceId: selectedDeliveryService.id,
-          deliveryServiceName: selectedDeliveryService.name,
-        }
-      : {}),
-  });
+  } = usePaginatedOrders(paginatedFilters);
   
   // Delete mutation
   const deleteOrderMutation = useDeleteOrder();
@@ -122,7 +181,7 @@ const Orders = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, debouncedSearchTerm, salesmanFilter, deliveryServiceFilter]);
+  }, [statusFilter, debouncedSearchTerm, salesmanIdFilter, deliveryServiceIdFilter]);
 
   const handleViewOrder = (order: any) => {
     setViewingOrder(order);
@@ -178,12 +237,14 @@ const Orders = () => {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     setSelectedOrders([]); // Clear selection on page change
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleItemsPerPageChange = (items: number) => {
     setItemsPerPage(items);
     setCurrentPage(1);
     setSelectedOrders([]); // Clear selection on page change
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSelectOrder = (orderId: number) => {
@@ -293,7 +354,7 @@ const Orders = () => {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Orders</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <Button onClick={handleNewOrder} className="gap-2">
               <Plus className="h-4 w-4" />
               Add Order
@@ -307,15 +368,6 @@ const Orders = () => {
             >
               <RotateCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
             </Button>
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search orders..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
-              />
-            </div>
             {selectedOrders.length > 0 && (
               <div className="flex gap-2">
                 <Button 
@@ -349,48 +401,89 @@ const Orders = () => {
           </div>
         </div>
 
-        <div className="flex gap-4">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {Object.values(ORDER_STATUSES).map((status) => (
-                <SelectItem key={status.value} value={status.value.toLowerCase()}>
-                  {status.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div className="flex-1">
+              <div className="text-xs font-medium text-muted-foreground">Search</div>
+              <div className="relative mt-2">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search orders..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
 
-          <Select value={salesmanFilter} onValueChange={setSalesmanFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by salesman" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Salesmen</SelectItem>
-              {uniqueSalesmen.map((salesman: string) => (
-                <SelectItem key={salesman} value={salesman}>
-                  {salesman}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <div className="w-full sm:w-[220px]">
+              <div className="text-xs font-medium text-muted-foreground">Status</div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="mt-2 w-full">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {Object.values(ORDER_STATUSES).map((status) => (
+                    <SelectItem key={status.value} value={status.value.toLowerCase()}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <Select value={deliveryServiceFilter} onValueChange={setDeliveryServiceFilter}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filter by delivery service" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Delivery Services</SelectItem>
-              {deliveryServices.map((service: any) => (
-                <SelectItem key={service.id} value={service.id.toString()}>
-                  {service.name}
-                </SelectItem>
+            {isAdmin && (
+              <div className="w-full sm:w-[260px]">
+                <div className="text-xs font-medium text-muted-foreground">Salesman</div>
+                <div className="mt-2">
+                  <SearchableSelect
+                    options={salesmanOptions}
+                    value={salesmanIdFilter}
+                    onValueChange={(v) => setSalesmanIdFilter(v || "all")}
+                    placeholder="All salesmen"
+                    searchPlaceholder="Search salesman..."
+                    emptyMessage="No salesman found."
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="w-full sm:w-[260px]">
+              <div className="text-xs font-medium text-muted-foreground">Delivery service</div>
+              <div className="mt-2">
+                <SearchableSelect
+                  options={deliveryServiceOptions}
+                  value={deliveryServiceIdFilter}
+                  onValueChange={(v) => setDeliveryServiceIdFilter(v || "all")}
+                  placeholder="All delivery services"
+                  searchPlaceholder="Search delivery service..."
+                  emptyMessage="No delivery service found."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {activeFilters.length > 0 && (
+                <>
+                  <Badge variant="secondary">{activeFilters.length}</Badge>
+                  <Button variant="outline" onClick={clearAllFilters}>
+                    Reset
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {activeFilters.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {activeFilters.map((f) => (
+                <Badge key={f.key} variant="secondary">
+                  {f.label}
+                </Badge>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          )}
         </div>
 
         <Table>

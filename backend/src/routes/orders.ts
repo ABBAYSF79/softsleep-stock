@@ -173,6 +173,7 @@ router.get('/', authMiddleware, async (req, res) => {
     } = req.query;
 
     const where: any = req.user?.role === 'ADMIN' ? {} : { userId: req.user?.id };
+    const isAdmin = req.user?.role === 'ADMIN';
 
     // Apply filters
     if (status && status !== 'all') {
@@ -190,7 +191,10 @@ router.get('/', authMiddleware, async (req, res) => {
       ];
     }
 
-    if (salesman && salesman !== 'all') {
+    const salesmanIdParam = parsePositiveInt(firstQueryString(req.query.salesmanId));
+    if (isAdmin && salesmanIdParam !== null) {
+      where.userId = salesmanIdParam;
+    } else if (isAdmin && salesman && salesman !== 'all') {
       where.user = {
         name: salesman.toString()
       };

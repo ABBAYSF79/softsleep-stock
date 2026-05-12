@@ -74,6 +74,7 @@ export interface OrderFilters {
   status?: string;
   search?: string;
   salesman?: string;
+  salesmanId?: string | number;
   /** @deprecated Prefer deliveryServiceId + deliveryServiceName */
   deliveryService?: string;
   /** Preferred: numeric id as string */
