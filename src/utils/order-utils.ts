@@ -25,7 +25,17 @@ export const formatPrice = (price: number | string | undefined | null | any): st
 };
 
 export const calculateOrderTotal = (items: OrderItem[] | undefined, orderTotal?: number): number => {
-  if (orderTotal !== undefined && orderTotal !== null) return orderTotal;
+  if (orderTotal !== undefined && orderTotal !== null) {
+    if (typeof orderTotal === 'object' && orderTotal !== null) {
+      if ('toString' in orderTotal) {
+        const n = parseFloat(String((orderTotal as any).toString()));
+        return Number.isFinite(n) ? n : 0;
+      }
+      return 0;
+    }
+    const n = typeof orderTotal === 'string' ? parseFloat(orderTotal) : orderTotal;
+    return Number.isFinite(n) ? n : 0;
+  }
   if (!items || items.length === 0) return 0;
   
   return items.reduce((sum, item) => {

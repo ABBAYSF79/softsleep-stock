@@ -100,12 +100,18 @@ export const exportOrdersToExcel = async (orders: any[], filename = 'orders-expo
 
   // Define columns
   worksheet.columns = [
+    { header: 'Order', key: 'id', width: 10 },
+    { header: 'Date', key: 'date', width: 18 },
     { header: 'Nom', key: 'customerName', width: 20 },
     { header: 'Telephone', key: 'phone', width: 15 },
     { header: 'Ville', key: 'city', width: 15 },
     { header: 'Service Livraison', key: 'deliveryService', width: 20 },
+    { header: 'Tracking', key: 'trackingCode', width: 18 },
+    { header: 'Statut', key: 'status', width: 14 },
+    { header: 'Adresse', key: 'address', width: 28 },
     { header: 'Prix', key: 'totalAmount', width: 15 },
     { header: 'Produit', key: 'items', width: 50 },
+    { header: 'Note', key: 'note', width: 28 },
   ];
 
   // Style header row
@@ -118,18 +124,26 @@ export const exportOrdersToExcel = async (orders: any[], filename = 'orders-expo
 
   // Add data rows
   orders.forEach(order => {
+    const createdAt = order?.createdAt ? new Date(order.createdAt) : null;
+    const items = Array.isArray(order?.items) ? order.items : [];
     // Format items string
-    const itemsString = order.items.map((item: any) => 
-      `${item.quantity}x ${item.product?.name || 'Unknown'} (${item.variant?.name || 'Unknown'})`
+    const itemsString = items.map((item: any) => 
+      `${item?.quantity ?? 0}x ${item?.product?.name || item?.productName || 'Unknown'} (${item?.variant?.name || item?.variantName || 'Unknown'})`
     ).join(', ');
 
     worksheet.addRow({
+      id: order?.id ?? '',
+      date: createdAt ? format(createdAt, 'yyyy-MM-dd HH:mm') : '',
       customerName: order.customerName,
       phone: order.phone || '',
       city: order.city || '',
       deliveryService: order.deliveryService?.name || '',
-      totalAmount: parseFloat(order.totalAmount),
+      trackingCode: order?.trackingCode || '',
+      status: order?.status || '',
+      address: order?.address || '',
+      totalAmount: Number(order?.totalAmount ?? 0),
       items: itemsString,
+      note: typeof order?.note === 'string' ? order.note : '',
     });
   });
 

@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Stock from "./pages/Stock";
 import Orders from "./pages/Orders";
+import OrderManagement from "./pages/OrderManagement";
 import Users from "./pages/Users";
 import Delivery from "./pages/Delivery";
 import Settings from "./pages/Settings";
@@ -55,6 +56,11 @@ const App = () => (
             <Route path="/orders" element={
               <ProtectedRoute>
                 <Orders />
+              </ProtectedRoute>
+            } />
+            <Route path="/orders-management" element={
+              <ProtectedRoute>
+                <OrderManagement />
               </ProtectedRoute>
             } />
             <Route path="/sales" element={

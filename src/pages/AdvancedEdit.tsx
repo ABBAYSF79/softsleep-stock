@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +19,14 @@ import api from "@/lib/api";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatPrice } from "@/utils/order-utils";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 const AdvancedEdit = () => {
+  const [searchParams] = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [orderId, setOrderId] = useState("");
+  const [autoLoadOrderId, setAutoLoadOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<any>(null);
   
@@ -78,6 +81,21 @@ const AdvancedEdit = () => {
       toast.error("Invalid password");
     }
   };
+
+  useEffect(() => {
+    const initialOrderId = searchParams.get("orderId");
+    if (initialOrderId) {
+      setOrderId(initialOrderId);
+      setAutoLoadOrderId(initialOrderId);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!autoLoadOrderId) return;
+    fetchOrderById(autoLoadOrderId);
+    setAutoLoadOrderId(null);
+  }, [isAuthenticated, autoLoadOrderId]);
 
   const searchOrders = async () => {
     if (!searchTerm || searchTerm.length < 2) return;

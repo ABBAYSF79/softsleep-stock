@@ -66,7 +66,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
   const [note, setNote] = useState<string>("");
   const [trackingCode, setTrackingCode] = useState<string>("");
   const [deliveryChanged, setDeliveryChanged] = useState(false);
-  const [newCity, setNewCity] = useState("");
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
   
   const { user } = useAuth();
@@ -144,7 +143,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
       setSelectedVariant("");
       setQuantity(1);
       setManualTotal(null);
-      setNewCity("");
     }
   }, [order, open]);
 
@@ -376,13 +374,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
     }
   };
 
-  const handleAddCity = () => {
-    if (newCity.trim()) {
-      setSelectedCity(newCity);
-      setNewCity("");
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
@@ -400,7 +391,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
         </DialogHeader>
 
         <div className="space-y-6 overflow-y-auto pr-4">
-          {/* Order Information Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Order Information</CardTitle>
@@ -410,47 +400,45 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Customer</Label>
-                    <Input 
+                    <Input
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       disabled={isViewing}
                       placeholder="Customer name"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Sales Person</Label>
-                    <Input 
-                      value={isViewing ? order?.user?.name : user?.name} 
-                      disabled
-                    />
+                    <Input value={isViewing ? order?.user?.name : user?.name} disabled />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Date</Label>
-                    <Input 
+                    <Input
                       type="date"
-                      value={isViewing ? new Date(order?.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} 
+                      value={
+                        isViewing
+                          ? new Date(order?.createdAt).toISOString().split("T")[0]
+                          : new Date().toISOString().split("T")[0]
+                      }
                       disabled
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Status</Label>
                     {isViewing && isAdmin && (
-                      <Select 
-                        value={status} 
-                        onValueChange={handleStatusChange}
-                      >
+                      <Select value={status} onValueChange={handleStatusChange}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select status" />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.values(ORDER_STATUSES).map((status) => (
-                            <SelectItem key={status.value} value={status.value}>
-                              {status.label}
+                          {Object.values(ORDER_STATUSES).map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                              {s.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -468,9 +456,9 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                   </div>
 
                   <div className="space-y-2">
-                    <Label className={status === 'IN_PROCESS' && !trackingCode ? "text-red-600 flex items-center gap-2" : ""}>
+                    <Label className={status === "IN_PROCESS" && !trackingCode ? "text-red-600 flex items-center gap-2" : ""}>
                       Tracking Code
-                      {status === 'IN_PROCESS' && !trackingCode && (
+                      {status === "IN_PROCESS" && !trackingCode && (
                         <span className="text-xs font-normal bg-red-100 text-red-600 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                           <AlertTriangle className="h-3 w-3" />
                           Required
@@ -482,9 +470,9 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                       onChange={(e) => setTrackingCode(e.target.value)}
                       placeholder="Tracking Code"
                       disabled={!canEditTrackingCode}
-                      className={status === 'IN_PROCESS' && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
+                      className={status === "IN_PROCESS" && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
                     />
-                    {status === 'IN_PROCESS' && !trackingCode && (
+                    {status === "IN_PROCESS" && !trackingCode && (
                       <p className="text-[11px] text-red-500 font-medium">
                         Please provide a tracking code for In Process orders
                       </p>
@@ -496,10 +484,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                       <div className="space-y-2">
                         <Label htmlFor="deliveryService">Delivery Service</Label>
                         {isViewing && !isAdmin ? (
-                          <Input
-                            value={deliveryServiceName || ''}
-                            readOnly
-                          />
+                          <Input value={deliveryServiceName || ""} readOnly />
                         ) : (
                           <SearchableSelect
                             value={selectedDeliveryService}
@@ -507,10 +492,12 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                               setSelectedDeliveryService(value);
                               setSelectedCity("");
                             }}
-                            options={deliveryServices?.map((service) => ({
-                              label: service.name,
-                              value: service.id.toString(),
-                            })) || []}
+                            options={
+                              deliveryServices?.map((service) => ({
+                                label: service.name,
+                                value: service.id.toString(),
+                              })) || []
+                            }
                             placeholder="Select delivery service"
                             searchPlaceholder="Search service..."
                           />
@@ -522,30 +509,16 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                         <SearchableSelect
                           value={selectedCity}
                           onValueChange={setSelectedCity}
-                          options={selectedServiceCities.map(city => ({
-                            label: city,
-                            value: city,
-                          })) || []}
+                          options={
+                            selectedServiceCities.map((city) => ({
+                              label: city,
+                              value: city,
+                            })) || []
+                          }
                           placeholder="Select city"
                           searchPlaceholder="Search city..."
                           disabled={isViewing && !isAdmin}
                         />
-                        {!isViewing && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <Input
-                              placeholder="Add new city"
-                              value={newCity}
-                              onChange={(e) => setNewCity(e.target.value)}
-                            />
-                            <Button 
-                              size="sm" 
-                              onClick={handleAddCity}
-                              disabled={!newCity.trim()}
-                            >
-                              Add
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -554,7 +527,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
             </CardContent>
           </Card>
 
-          {/* Customer Information */}
           <Card>
             <CardHeader>
               <CardTitle>Customer Information</CardTitle>
@@ -563,27 +535,16 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    disabled={isViewing}
-                  />
+                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isViewing} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  disabled={isViewing}
-                />
+                <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} disabled={isViewing} />
               </div>
             </CardContent>
           </Card>
 
-          {/* Confirmation User Information */}
           {isViewing && (
             <Card>
               <CardHeader>
@@ -595,33 +556,21 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Name</Label>
-                        <Input
-                          value={order.confirmationUser.name}
-                          disabled
-                        />
+                        <Input value={order.confirmationUser.name} disabled />
                       </div>
                       <div className="space-y-2">
                         <Label>Phone</Label>
-                        <Input
-                          value={order.confirmationUser.phone || '-'}
-                          disabled
-                        />
+                        <Input value={order.confirmationUser.phone || "-"} disabled />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Email</Label>
-                        <Input
-                          value={order.confirmationUser.email || '-'}
-                          disabled
-                        />
+                        <Input value={order.confirmationUser.email || "-"} disabled />
                       </div>
                       <div className="space-y-2">
                         <Label>Linked Sales User</Label>
-                        <Input
-                          value={order.confirmationUser.linkedSalesUser?.name || '-'}
-                          disabled
-                        />
+                        <Input value={order.confirmationUser.linkedSalesUser?.name || "-"} disabled />
                       </div>
                     </div>
                   </>
@@ -634,7 +583,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
             </Card>
           )}
 
-          {/* Add confirmation user selection before the items section */}
           {!isViewing && (
             <div className="space-y-2">
               <Label>Confirmation User</Label>
@@ -643,12 +591,14 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                 onValueChange={setSelectedConfirmationUser}
                 options={[
                   { label: "None", value: "none" },
-                  ...(Array.isArray(confirmationUsers) ? confirmationUsers
-                    .filter(user => user.active)
-                    .map((user) => ({
-                      label: `${user.name}${user.linkedSalesUser ? ` (Linked to ${user.linkedSalesUser.name})` : ''}`,
-                      value: user.id.toString(),
-                    })) : [])
+                  ...(Array.isArray(confirmationUsers)
+                    ? confirmationUsers
+                        .filter((u) => u.active)
+                        .map((u) => ({
+                          label: `${u.name}${u.linkedSalesUser ? ` (Linked to ${u.linkedSalesUser.name})` : ""}`,
+                          value: u.id.toString(),
+                        }))
+                    : []),
                 ]}
                 placeholder="Select a confirmation user"
                 searchPlaceholder="Search confirmation user..."
@@ -656,7 +606,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
             </div>
           )}
 
-          {/* Order Items Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Order Items</CardTitle>
@@ -673,59 +622,61 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                           setSelectedVariant(value);
                           checkStockLevel(value);
                         }}
-                        options={products?.flatMap(product => 
-                          product.variants.map(variant => {
-                            const stockStatus = variant.stock === 0 ? ' - OUT OF STOCK' : 
-                              variant.stock <= 1 ? ` - LOW STOCK (${variant.stock})` : 
-                              ` - Stock: ${variant.stock}`;
-                            
-                            return {
-                              label: `${product.name} - ${variant.name} (MAD ${formatPrice(variant.price)})${stockStatus}`,
-                              value: variant.id.toString(),
-                              disabled: variant.stock === 0
-                            };
-                          })
-                        ) || []}
+                        options={
+                          products?.flatMap((product) =>
+                            product.variants.map((variant) => {
+                              const stockStatus =
+                                variant.stock === 0
+                                  ? " - OUT OF STOCK"
+                                  : variant.stock <= 1
+                                    ? ` - LOW STOCK (${variant.stock})`
+                                    : ` - Stock: ${variant.stock}`;
+
+                              return {
+                                label: `${product.name} - ${variant.name} (MAD ${formatPrice(variant.price)})${stockStatus}`,
+                                value: variant.id.toString(),
+                                disabled: variant.stock === 0,
+                              };
+                            })
+                          ) || []
+                        }
                         placeholder="Select product variant"
                         searchPlaceholder="Search product..."
                       />
                     </div>
-                    
+
                     <div className="col-span-2 space-y-2">
                       <Label>Quantity</Label>
-                      <Input 
-                        type="number" 
+                      <Input
+                        type="number"
                         min="1"
                         value={quantity}
                         onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
                       />
                     </div>
-                    
+
                     <div className="col-span-4">
-                      <Button 
-                        type="button"
-                        onClick={handleAddItem}
-                        className="w-full"
-                      >
+                      <Button type="button" onClick={handleAddItem} className="w-full">
                         Add Item
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* Low Stock Warning */}
                 {!isViewing && lowStockWarning && (
                   <div className="bg-red-50 border border-red-200 rounded-md p-3">
                     <div className="flex">
                       <div className="flex-shrink-0">
                         <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          <path
+                            fillRule="evenodd"
+                            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
                         </svg>
                       </div>
                       <div className="ml-3">
-                        <p className="text-sm text-red-800 font-medium">
-                          {lowStockWarning}
-                        </p>
+                        <p className="text-sm text-red-800 font-medium">{lowStockWarning}</p>
                       </div>
                     </div>
                   </div>
@@ -735,7 +686,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                   <table className="w-full">
                     <tbody>
                       {orderItems.map((item, index) => {
-                        // For viewing orders, use the data directly from the order
                         if (isViewing) {
                           return (
                             <tr key={index} className="border-b">
@@ -756,10 +706,9 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                             </tr>
                           );
                         }
-                        
-                        // For creating orders, look up the product and variant info
-                        const variant = products?.flatMap(p => p.variants).find(v => v.id === item.variantId);
-                        const product = products?.find(p => p.variants.some(v => v.id === item.variantId));
+
+                        const variant = products?.flatMap((p) => p.variants).find((v) => v.id === item.variantId);
+                        const product = products?.find((p) => p.variants.some((v) => v.id === item.variantId));
                         return (
                           <tr key={index} className="border-b">
                             <td className="py-2">
@@ -796,7 +745,6 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
             </CardContent>
           </Card>
 
-          {/* Order Summary Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Order Summary</CardTitle>
@@ -805,7 +753,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Manual Total (Optional)</Label>
-                  <Input 
+                  <Input
                     type="number"
                     value={manualTotal !== null ? manualTotal : ""}
                     onChange={(e) => setManualTotal(e.target.value !== "" ? parseFloat(e.target.value) : null)}
@@ -828,9 +776,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                   </div>
                   <div className="flex justify-between text-lg font-bold pt-2 border-t">
                     <span>Total:</span>
-                    <span>
-                      MAD {isViewing ? formatPrice(order?.totalAmount) : calculateTotal().toFixed(2)}
-                    </span>
+                    <span>MAD {isViewing ? formatPrice(order?.totalAmount) : calculateTotal().toFixed(2)}</span>
                   </div>
                 </div>
               </div>

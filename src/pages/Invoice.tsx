@@ -89,7 +89,7 @@ const Invoice = () => {
   const calculateTotal = () => {
     if (selectedOrders.length === 0) return 0;
     return selectedOrders.reduce((sum, order) => {
-      return sum + calculateOrderTotal(order.orderItems);
+      return sum + calculateOrderTotal(order.orderItems, order.totalAmount);
     }, 0);
   };
 
