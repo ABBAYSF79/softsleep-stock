@@ -17,6 +17,7 @@ import {
   OrderStatusUpdate,
   useCreateOrder,
   useDeliveryServices,
+  usePillowStock,
   useProducts,
   useUpdateOrderDelivery,
   useUpdateOrderStatus,
@@ -63,6 +64,9 @@ export const OrderManagementDialog = ({
   const [selectedVariant, setSelectedVariant] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [orderItems, setOrderItems] = useState<any[]>([]);
+  const [selectedPillowId, setSelectedPillowId] = useState<string>("");
+  const [pillowQty, setPillowQty] = useState(1);
+  const [pillowItems, setPillowItems] = useState<any[]>([]);
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [manualTotal, setManualTotal] = useState<number | null>(null);
@@ -77,6 +81,7 @@ export const OrderManagementDialog = ({
   const { user } = useAuth();
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
+  const { data: pillows } = usePillowStock();
   const createOrder = useCreateOrder();
   const updateOrderStatus = useUpdateOrderStatus();
   const updateOrderDelivery = useUpdateOrderDelivery();
@@ -117,6 +122,16 @@ export const OrderManagementDialog = ({
           variant: item.variant,
         }))
       );
+      setPillowItems(
+        Array.isArray(order.pillowItems)
+          ? order.pillowItems.map((pi: any) => ({
+              pillowId: pi.pillowId,
+              pillowName: pi.pillowName,
+              quantity: pi.quantity,
+              price: pi.price,
+            }))
+          : []
+      );
       setAddress(order.address || "");
       setPhone(order.phone || "");
       setSelectedDeliveryService(order.deliveryServiceId?.toString() || "");
@@ -130,6 +145,9 @@ export const OrderManagementDialog = ({
       setOriginalStatus("PENDING");
       setCustomerName("");
       setOrderItems([]);
+      setSelectedPillowId("");
+      setPillowQty(1);
+      setPillowItems([]);
       setAddress("");
       setPhone("");
       setSelectedDeliveryService("");
@@ -245,11 +263,62 @@ export const OrderManagementDialog = ({
     setOrderItems(newItems);
   };
 
+  const handleAddPillow = () => {
+    const pillowId = Number(selectedPillowId);
+    if (!Number.isInteger(pillowId) || pillowId <= 0) return;
+    if (!Number.isInteger(pillowQty) || pillowQty <= 0) return;
+
+    const pillow = (pillows as any[])?.find((p: any) => Number(p.id) === pillowId);
+    if (!pillow) return;
+
+    setPillowItems((prev) => {
+      const next = prev.slice();
+      const idx = next.findIndex((x) => Number(x.pillowId) === pillowId);
+      const existingQty = idx >= 0 ? Number(next[idx].quantity || 0) : 0;
+      const newQty = existingQty + pillowQty;
+
+      if (newQty > Number(pillow.stock || 0)) {
+        toast.error("Insufficient pillow stock");
+        return prev;
+      }
+
+      const row = {
+        pillowId,
+        pillowName: pillow.name,
+        quantity: newQty,
+        price: pillow.price,
+      };
+
+      if (idx >= 0) next[idx] = row;
+      else next.push(row);
+
+      return next;
+    });
+
+    setSelectedPillowId("");
+    setPillowQty(1);
+  };
+
+  const handleRemovePillow = (pillowId: number) => {
+    setPillowItems((prev) => prev.filter((x) => Number(x.pillowId) !== Number(pillowId)));
+  };
+
   const calculateTotal = () => {
     return orderItems.reduce((sum: number, item: any) => {
       const price = typeof item.price === "object" ? parseFloat(item.price.toString()) : item.price;
       return sum + price * item.quantity;
     }, 0);
+  };
+
+  const calculatePillowTotal = () => {
+    return pillowItems.reduce((sum: number, item: any) => {
+      const price = typeof item.price === "object" ? parseFloat(item.price.toString()) : item.price;
+      return sum + price * Number(item.quantity ?? 0);
+    }, 0);
+  };
+
+  const calculateGrandTotal = () => {
+    return calculateTotal() + calculatePillowTotal();
   };
 
   const calculateCommission = (total: number) => {
@@ -349,11 +418,15 @@ export const OrderManagementDialog = ({
           address,
           phone,
           city: selectedCity,
-          totalAmount: manualTotalNumber ?? calculateTotal(),
+          totalAmount: manualTotalNumber ?? calculateGrandTotal(),
           deliveryServiceId: parseInt(selectedDeliveryService),
           items: orderItems.map((item: any) => ({
             variantId: item.variantId,
             quantity: item.quantity,
+          })),
+          pillowItems: pillowItems.map((pi: any) => ({
+            pillowId: pi.pillowId,
+            quantity: pi.quantity,
           })),
           confirmationUserId:
             selectedConfirmationUser === "none" ? null : parseInt(selectedConfirmationUser),
@@ -521,7 +594,7 @@ export const OrderManagementDialog = ({
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">Items</CardTitle>
                 <Badge variant="secondary" className="tabular-nums">
-                  {orderItems.length}
+                  {orderItems.length + pillowItems.length}
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -565,30 +638,64 @@ export const OrderManagementDialog = ({
                   )}
                 </div>
 
+                {pillowItems.length > 0 && (
+                  <div className="overflow-hidden rounded-lg border">
+                    <div className="grid grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                      <div>Pillow (supplement)</div>
+                      <div className="text-right">Qty</div>
+                      <div className="text-right">Price</div>
+                      <div className="text-right">Total</div>
+                    </div>
+                    {pillowItems.map((pi: any, idx: number) => {
+                      const unit =
+                        typeof pi?.price === "object"
+                          ? parseFloat(String(pi.price?.toString?.() ?? 0))
+                          : Number(pi?.price ?? 0);
+                      const qty = Number(pi?.quantity ?? 0);
+                      const lineTotal = unit * qty;
+                      return (
+                        <div
+                          key={`${pi?.pillowId ?? "p"}-${idx}`}
+                          className="grid grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{pi?.pillowName || "-"}</div>
+                            <div className="text-xs text-muted-foreground truncate">Supplement</div>
+                          </div>
+                          <div className="text-right tabular-nums">{qty}</div>
+                          <div className="text-right tabular-nums">MAD {formatPrice(unit)}</div>
+                          <div className="text-right tabular-nums font-medium">MAD {formatPrice(lineTotal)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
                   <div className="text-sm font-medium">Order total</div>
                   <div className="text-sm font-semibold tabular-nums">
-                    MAD {formatPrice(manualTotalNumber ?? calculateTotal())}
+                    MAD {formatPrice(manualTotalNumber ?? calculateGrandTotal())}
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
         ) : (
-          <div className="grid gap-6 overflow-y-auto pr-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
+          <div className="grid gap-6 overflow-y-auto pr-4 lg:grid-cols-2">
+            <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Customer & delivery</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Customer name</Label>
-                  <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" autoFocus />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Customer name</Label>
+                    <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" autoFocus />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -601,41 +708,69 @@ export const OrderManagementDialog = ({
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="deliveryService">Delivery service</Label>
-                  <SearchableSelect
-                    value={selectedDeliveryService}
-                    onValueChange={(value) => {
-                      setSelectedDeliveryService(value);
-                      setSelectedCity("");
-                    }}
-                    options={
-                      deliveryServices?.map((service: any) => ({ label: service.name, value: service.id.toString() })) || []
-                    }
-                    placeholder="Select delivery service"
-                    searchPlaceholder="Search service..."
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="deliveryService">Delivery service</Label>
+                    <SearchableSelect
+                      value={selectedDeliveryService}
+                      onValueChange={(value) => {
+                        setSelectedDeliveryService(value);
+                        setSelectedCity("");
+                      }}
+                      options={
+                        deliveryServices?.map((service: any) => ({ label: service.name, value: service.id.toString() })) || []
+                      }
+                      placeholder="Select delivery service"
+                      searchPlaceholder="Search service..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>City</Label>
+                    <SearchableSelect
+                      value={selectedCity}
+                      onValueChange={setSelectedCity}
+                      options={selectedServiceCities.map((city: string) => ({ label: city, value: city })) || []}
+                      placeholder="Select city"
+                      searchPlaceholder="Search city..."
+                      disabled={!selectedDeliveryService}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>City</Label>
-                  <SearchableSelect
-                    value={selectedCity}
-                    onValueChange={setSelectedCity}
-                    options={selectedServiceCities.map((city: string) => ({ label: city, value: city })) || []}
-                    placeholder="Select city"
-                    searchPlaceholder="Search city..."
-                    disabled={!selectedDeliveryService}
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Confirmation user</Label>
+                    <SearchableSelect
+                      value={selectedConfirmationUser}
+                      onValueChange={setSelectedConfirmationUser}
+                      options={[
+                        { label: "None", value: "none" },
+                        ...(Array.isArray(confirmationUsers)
+                          ? confirmationUsers
+                              .filter((u) => u.active)
+                              .map((u) => ({
+                                label: `${u.name}${u.linkedSalesUser ? ` (Linked to ${u.linkedSalesUser.name})` : ""}`,
+                                value: u.id.toString(),
+                              }))
+                          : []),
+                      ]}
+                      placeholder="None"
+                      searchPlaceholder="Search confirmation user..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Note</Label>
+                    <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2">
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">Items</CardTitle>
                 <Badge variant="secondary" className="tabular-nums">
-                  {orderItems.length}
+                  {orderItems.length + pillowItems.length}
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -695,34 +830,6 @@ export const OrderManagementDialog = ({
                   </div>
                 )}
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Confirmation user</Label>
-                    <SearchableSelect
-                      value={selectedConfirmationUser}
-                      onValueChange={setSelectedConfirmationUser}
-                      options={[
-                        { label: "None", value: "none" },
-                        ...(Array.isArray(confirmationUsers)
-                          ? confirmationUsers
-                              .filter((u) => u.active)
-                              .map((u) => ({
-                                label: `${u.name}${u.linkedSalesUser ? ` (Linked to ${u.linkedSalesUser.name})` : ""}`,
-                                value: u.id.toString(),
-                              }))
-                          : []),
-                      ]}
-                      placeholder="None"
-                      searchPlaceholder="Search confirmation user..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Note</Label>
-                    <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
-                  </div>
-                </div>
-
                 <div className="space-y-2">
                   <table className="w-full">
                     <tbody>
@@ -748,6 +855,77 @@ export const OrderManagementDialog = ({
                   </table>
                 </div>
 
+                <div className="border rounded-md p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">Pillows (supplement)</div>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {pillowItems.length}
+                    </Badge>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAddPillow();
+                    }}
+                    className="mt-3 grid grid-cols-12 gap-3 items-end"
+                  >
+                    <div className="col-span-8 space-y-2">
+                      <Label>Pillow</Label>
+                      <SearchableSelect
+                        value={selectedPillowId}
+                        onValueChange={setSelectedPillowId}
+                        options={
+                          (pillows as any[])?.map((p: any) => ({
+                            label: `${p.name} (Stock: ${p.stock ?? 0})`,
+                            value: String(p.id),
+                            disabled: Number(p.stock ?? 0) <= 0,
+                          })) || []
+                        }
+                        placeholder="Select pillow"
+                        searchPlaceholder="Search pillow..."
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>Qty</Label>
+                      <Input type="number" min="1" value={pillowQty} onChange={(e) => setPillowQty(parseInt(e.target.value) || 1)} />
+                    </div>
+                    <div className="col-span-2">
+                      <Button type="submit" className="w-full" disabled={!selectedPillowId}>
+                        Add
+                      </Button>
+                    </div>
+                  </form>
+
+                  {pillowItems.length > 0 && (
+                    <div className="mt-3">
+                      <table className="w-full">
+                        <tbody>
+                          {pillowItems.map((pi: any) => (
+                            <tr key={pi.pillowId} className="border-b">
+                              <td className="py-2">
+                                <div className="font-medium">{pi.pillowName}</div>
+                              </td>
+                              <td className="text-right py-2 tabular-nums">{pi.quantity}</td>
+                              <td className="text-right py-2 tabular-nums">MAD {formatPrice(pi.price)}</td>
+                              <td className="text-right py-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemovePillow(pi.pillowId)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2 md:items-end">
                   {isAdmin && (
                     <div className="space-y-2">
@@ -764,7 +942,7 @@ export const OrderManagementDialog = ({
                   <div className="space-y-2 md:justify-self-end md:text-right">
                     <div className="flex justify-between md:justify-end md:gap-10">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-medium tabular-nums">MAD {calculateTotal().toFixed(2)}</span>
+                      <span className="font-medium tabular-nums">MAD {calculateGrandTotal().toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between md:justify-end md:gap-10">
                       <span className="text-muted-foreground">Commission</span>
@@ -773,7 +951,7 @@ export const OrderManagementDialog = ({
                     <div className="flex justify-between border-t pt-2 text-lg font-bold md:justify-end md:gap-10">
                       <span>Total</span>
                       <span className="tabular-nums">
-                        MAD {(manualTotalNumber ?? calculateTotal()).toFixed(2)}
+                        MAD {(manualTotalNumber ?? calculateGrandTotal()).toFixed(2)}
                       </span>
                     </div>
                   </div>

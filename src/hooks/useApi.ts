@@ -402,6 +402,186 @@ export const useAddCorrection = () => {
   });
 };
 
+// Pillow Stock
+export const usePillowStock = () => {
+  return useQuery({
+    queryKey: ['pillow-stock'],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-stock', { timeout: 15000 });
+      return data;
+    },
+    retry: 1,
+  });
+};
+
+export const usePillowStockHistory = (pillowId?: number) => {
+  return useQuery({
+    queryKey: ['pillow-stock-history', pillowId ?? 'all'],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-stock/history', {
+        params: pillowId ? { pillowId } : undefined,
+        headers: { 'x-admin-code': 'admin123456' },
+        timeout: 15000,
+      });
+      return data;
+    }
+  });
+};
+
+export const useCreatePillow = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { name: string; price: number; stock: number }) => {
+      const { data } = await api.post('/pillow-stock', { ...payload, password: 'admin123456' });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
+      toast.success('Pillow created successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to create pillow');
+    }
+  });
+};
+
+export const usePillowSupply = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, quantity, reason }: { id: number; quantity: number; reason: string }) => {
+      const { data } = await api.post(`/pillow-stock/${id}/supply`, { quantity, reason, password: 'admin123456' });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
+      toast.success('Pillow stock updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to add supply');
+    }
+  });
+};
+
+export const usePillowOutgoing = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, quantity, reason }: { id: number; quantity: number; reason: string }) => {
+      const { data } = await api.post(`/pillow-stock/${id}/outgoing`, { quantity, reason, password: 'admin123456' });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
+      toast.success('Pillow stock updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to remove stock');
+    }
+  });
+};
+
+// Pillow Orders
+export const usePillowOrders = () => {
+  return useQuery({
+    queryKey: ['pillow-orders'],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-orders', { timeout: 15000 });
+      return data;
+    },
+    retry: 1,
+  });
+};
+
+export const useCreatePillowOrder = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      customerName: string;
+      phone: string;
+      address: string;
+      city: string;
+      deliveryServiceId: number;
+      items: Array<{ pillowId: number; quantity: number }>;
+    }) => {
+      const { data } = await api.post('/pillow-orders', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
+      toast.success('Pillow order created');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to create pillow order');
+    }
+  });
+};
+
+export const useUpdatePillowOrderStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const { data } = await api.patch(`/pillow-orders/${id}/status`, { status });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
+      toast.success('Status updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update status');
+    }
+  });
+};
+
+export const useUpdatePillowOrderPaymentStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, isPaid }: { id: number; isPaid: boolean }) => {
+      const { data } = await api.patch(`/pillow-orders/${id}/payment`, { isPaid });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['pillow-orders-paginated'] });
+      toast.success('Payment status updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update payment status');
+    }
+  });
+};
+
+export interface PillowOrderFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  deliveryServiceId?: string | number;
+}
+
+export const usePaginatedPillowOrders = (filters: PillowOrderFilters) => {
+  return useQuery({
+    queryKey: ['pillow-orders-paginated', filters],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-orders', { params: filters, timeout: 15000 });
+      return data;
+    },
+    placeholderData: (previousData) => previousData,
+  });
+};
+
 // Users
 export const useUsers = () => {
   return useQuery({

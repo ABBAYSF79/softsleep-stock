@@ -41,6 +41,8 @@ model User {
   activities     Activity[]
   orders         Order[]
   stockHistories StockHistory[]
+  pillowStockHistories PillowStockHistory[]
+  pillowOrders   PillowOrder[]
   confirmationUsers ConfirmationUser[] @relation("SalesmanConfirmations")
   linkedConfirmationUsers ConfirmationUser[] @relation("LinkedSalesUser")
   invoices       Invoice[]
@@ -96,6 +98,7 @@ model Order {
   deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
   user              User             @relation(fields: [userId], references: [id])
   orderItems        OrderItem[]
+  pillowItems       OrderPillowItem[]
   confirmationUserId Int?
   confirmationUser   ConfirmationUser? @relation(fields: [confirmationUserId], references: [id])
 
@@ -133,6 +136,86 @@ model StockHistory {
   @@index([variantId])
 }
 
+model Pillow {
+  id        Int      @id @default(autoincrement())
+  name      String
+  price     Decimal  @db.Decimal(10, 2)
+  stock     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  histories PillowStockHistory[]
+  orderItems PillowOrderItem[]
+  mattressOrderItems OrderPillowItem[]
+}
+
+model OrderPillowItem {
+  id       Int     @id @default(autoincrement())
+  orderId  Int
+  pillowId Int
+  quantity Int
+  price    Decimal @db.Decimal(10, 2)
+  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pillow   Pillow  @relation(fields: [pillowId], references: [id])
+
+  @@index([orderId])
+  @@index([pillowId])
+}
+
+model PillowStockHistory {
+  id            Int                  @id @default(autoincrement())
+  pillowId      Int
+  quantity      Int
+  type          PillowStockChangeType
+  reason        String?
+  createdAt     DateTime             @default(now())
+  previousStock Int
+  newStock      Int
+  userId        Int
+  user          User                 @relation(fields: [userId], references: [id])
+  pillow        Pillow               @relation(fields: [pillowId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([pillowId])
+}
+
+model PillowOrder {
+  id                Int           @id @default(autoincrement())
+  userId            Int
+  customerName      String
+  phone             String?
+  address           String?
+  city              String?
+  deliveryServiceId Int?
+  status            OrderStatus    @default(PENDING)
+  totalAmount       Decimal        @db.Decimal(10, 2)
+  isPaid            Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id])
+  deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
+  items             PillowOrderItem[]
+
+  @@index([userId])
+  @@index([deliveryServiceId])
+  @@index([createdAt])
+}
+
+model PillowOrderItem {
+  id       Int        @id @default(autoincrement())
+  orderId  Int
+  pillowId Int
+  quantity Int
+  price    Decimal    @db.Decimal(10, 2)
+
+  order    PillowOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pillow   Pillow      @relation(fields: [pillowId], references: [id])
+
+  @@index([orderId])
+  @@index([pillowId])
+}
+
 model DeliveryService {
   id        Int      @id @default(autoincrement())
   name      String
@@ -141,6 +224,7 @@ model DeliveryService {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   orders    Order[]
+  pillowOrders PillowOrder[]
 }
 
 model CommissionSettings {
@@ -232,4 +316,11 @@ enum StockChangeType {
   RETURN
   ADJUSTMENT
   SUPPLY
+}
+
+enum PillowStockChangeType {
+  INITIAL
+  SUPPLY
+  OUTGOING
+  ADJUSTMENT
 }

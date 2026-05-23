@@ -50,9 +50,9 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       adminOnly: true,
     },
     {
-      title: "Orders",
+      title: "Pillow Orders",
       icon: <ShoppingCart className="h-5 w-5" />,
-      path: "/orders",
+      path: "/pillow-orders",
     },
     {
       title: "Order Management",

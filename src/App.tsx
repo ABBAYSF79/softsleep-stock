@@ -9,6 +9,8 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Stock from "./pages/Stock";
+import PillowStock from "./pages/PillowStock";
+import PillowOrders from "./pages/PillowOrders";
 import Orders from "./pages/Orders";
 import OrderManagement from "./pages/OrderManagement";
 import Users from "./pages/Users";
@@ -51,6 +53,16 @@ const App = () => (
             <Route path="/stock" element={
               <ProtectedRoute adminOnly>
                 <Stock />
+              </ProtectedRoute>
+            } />
+            <Route path="/pillow-stock" element={
+              <ProtectedRoute adminOnly>
+                <PillowStock />
+              </ProtectedRoute>
+            } />
+            <Route path="/pillow-orders" element={
+              <ProtectedRoute>
+                <PillowOrders />
               </ProtectedRoute>
             } />
             <Route path="/orders" element={

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useFullUpdateOrder, useProducts, useDeliveryServices } from "@/hooks/useApi";
+import { useFullUpdateOrder, useProducts, useDeliveryServices, usePillowStock } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Search, Save, Lock, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +41,8 @@ const AdvancedEdit = () => {
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState<string>(""); // Optional manual price
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
+  const [selectedPillowId, setSelectedPillowId] = useState("");
+  const [pillowQty, setPillowQty] = useState(1);
 
   // Form States
   const [formData, setFormData] = useState<any>({
@@ -54,6 +56,7 @@ const AdvancedEdit = () => {
     note: "",
     totalAmount: "",
     items: [],
+    pillowItems: [],
     confirmationUserId: "none"
   });
 
@@ -61,12 +64,25 @@ const AdvancedEdit = () => {
   const fullUpdateMutation = useFullUpdateOrder();
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
+  const { data: pillows } = usePillowStock();
+
+  const calculateTotal = (items: any[], pillowItems: any[]) => {
+    const itemsTotal = (Array.isArray(items) ? items : []).reduce(
+      (sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0
+    );
+    const pillowTotal = (Array.isArray(pillowItems) ? pillowItems : []).reduce(
+      (sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0
+    );
+    return (itemsTotal + pillowTotal).toString();
+  };
 
   // Fetch confirmation users
   const { data: confirmationUsers = [] } = useQuery<any[]>({
     queryKey: ["confirmationUsers"],
     queryFn: async () => {
-      const response = await api.get("/api/confirmation-users");
+      const response = await api.get("/confirmation-users");
       return response.data || [];
     },
     enabled: isAuthenticated && user?.role === 'ADMIN'
@@ -146,7 +162,15 @@ const AdvancedEdit = () => {
           variantName: item.variant?.name || "Unknown Variant",
           variant: item.variant,
           product: item.product
-        }))
+        })),
+        pillowItems: Array.isArray(data.pillowItems)
+          ? data.pillowItems.map((pi: any) => ({
+              pillowId: pi.pillowId,
+              pillowName: pi.pillowName || pi.pillow?.name || "Pillow",
+              quantity: Number(pi.quantity),
+              price: parseFloat(pi.price ?? pi.pillow?.price ?? 0),
+            }))
+          : []
       });
       toast.success("Order loaded successfully");
     } catch (error) {
@@ -166,19 +190,32 @@ const AdvancedEdit = () => {
   const handleUpdate = async () => {
     if (!order) return;
 
-    if (formData.items.length === 0) {
-      toast.error("Order must have at least one item");
+    if ((formData.items?.length || 0) === 0 && (formData.pillowItems?.length || 0) === 0) {
+      toast.error("Order must have at least one item or pillow supplement");
       return;
     }
+
+    const computedTotal = calculateTotal(formData.items || [], formData.pillowItems || []);
+    const parsedTotal = formData.totalAmount === "" ? NaN : Number(formData.totalAmount);
 
     fullUpdateMutation.mutate({
       id: order.id,
       data: {
         password: "admin123456",
         ...formData,
+        items: (formData.items || []).map((i: any) => ({
+          variantId: i.variantId,
+          quantity: i.quantity,
+          price: i.price,
+        })),
+        pillowItems: (formData.pillowItems || []).map((i: any) => ({
+          pillowId: i.pillowId,
+          quantity: i.quantity,
+          price: i.price,
+        })),
         deliveryServiceId: formData.deliveryServiceId ? parseInt(formData.deliveryServiceId) : null,
         confirmationUserId: formData.confirmationUserId === "none" ? null : parseInt(formData.confirmationUserId),
-        totalAmount: parseFloat(formData.totalAmount)
+        ...(Number.isFinite(parsedTotal) ? { totalAmount: parsedTotal } : { totalAmount: Number(computedTotal) })
       }
     });
   };
@@ -186,8 +223,7 @@ const AdvancedEdit = () => {
   const handleRemoveItem = (index: number) => {
     const newItems = formData.items.filter((_: any, i: number) => i !== index);
     
-    // Recalculate total when removing items
-    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+    const newTotal = calculateTotal(newItems, formData.pillowItems);
     
     setFormData({ 
       ...formData, 
@@ -262,8 +298,7 @@ const AdvancedEdit = () => {
 
     const newItems = [...formData.items, newItem];
 
-    // Calculate new total automatically
-    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+    const newTotal = calculateTotal(newItems, formData.pillowItems);
 
     setFormData({
       ...formData,
@@ -281,6 +316,44 @@ const AdvancedEdit = () => {
   const selectedServiceCities = deliveryServices?.find(
     service => service.id.toString() === formData.deliveryServiceId
   )?.cities || [];
+
+  const handleAddPillowItem = () => {
+    const pillowId = Number(selectedPillowId);
+    if (!Number.isInteger(pillowId) || pillowId <= 0) {
+      toast.error("Please select a pillow");
+      return;
+    }
+
+    if (pillowQty < 1) {
+      toast.error("Quantity must be at least 1");
+      return;
+    }
+
+    const pillow = (pillows as any[])?.find((p: any) => Number(p.id) === pillowId);
+    if (!pillow) return;
+
+    const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.slice() : [];
+    const idx = next.findIndex((x: any) => Number(x.pillowId) === pillowId);
+    const unitPrice = parseFloat(pillow.price);
+    if (idx >= 0) {
+      next[idx] = { ...next[idx], quantity: Number(next[idx].quantity || 0) + pillowQty, price: unitPrice, pillowName: pillow.name };
+    } else {
+      next.push({ pillowId, pillowName: pillow.name, quantity: pillowQty, price: unitPrice });
+    }
+
+    const newTotal =
+      calculateTotal(formData.items, next);
+
+    setFormData({ ...formData, pillowItems: next, totalAmount: newTotal.toString() });
+    setSelectedPillowId("");
+    setPillowQty(1);
+  };
+
+  const handleRemovePillowItem = (pillowId: number) => {
+    const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.filter((x: any) => Number(x.pillowId) !== Number(pillowId)) : [];
+    const newTotal = calculateTotal(formData.items, next);
+    setFormData({ ...formData, pillowItems: next, totalAmount: newTotal.toString() });
+  };
 
   if (!user || user.role !== 'ADMIN') {
     return (
@@ -612,8 +685,10 @@ const AdvancedEdit = () => {
                         value={item.quantity} 
                         onChange={(e) => {
                           const newItems = [...formData.items];
-                          newItems[index] = { ...newItems[index], quantity: parseInt(e.target.value) };
-                          setFormData({ ...formData, items: newItems });
+                          const qty = Math.max(1, parseInt(e.target.value) || 1);
+                          newItems[index] = { ...newItems[index], quantity: qty };
+                          const newTotal = calculateTotal(newItems, formData.pillowItems);
+                          setFormData({ ...formData, items: newItems, totalAmount: newTotal });
                         }}
                       />
                     </div>
@@ -624,8 +699,10 @@ const AdvancedEdit = () => {
                         value={item.price} 
                         onChange={(e) => {
                           const newItems = [...formData.items];
-                          newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
-                          setFormData({ ...formData, items: newItems });
+                          const nextPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                          newItems[index] = { ...newItems[index], price: nextPrice };
+                          const newTotal = calculateTotal(newItems, formData.pillowItems);
+                          setFormData({ ...formData, items: newItems, totalAmount: newTotal });
                         }}
                       />
                     </div>
@@ -638,6 +715,95 @@ const AdvancedEdit = () => {
                     </Button>
                   </div>
                 ))}
+
+                <div className="border-t pt-4 space-y-4">
+                  <div className="text-sm font-semibold">Pillow Supplements</div>
+
+                  <div className="grid grid-cols-12 gap-4 items-end">
+                    <div className="col-span-7 space-y-2">
+                      <Label>Pillow</Label>
+                      <SearchableSelect
+                        value={selectedPillowId}
+                        onValueChange={(val) => setSelectedPillowId(val)}
+                        options={(Array.isArray(pillows) ? pillows : []).map((p: any) => {
+                          const stock = Number(p.stock || 0);
+                          const stockStatus = stock === 0 ? " - OUT OF STOCK" : stock <= 3 ? ` - LOW STOCK (${stock})` : ` - Stock: ${stock}`;
+                          return {
+                            label: `${p.name} (MAD ${formatPrice(p.price)})${stockStatus}`,
+                            value: String(p.id),
+                            disabled: stock === 0,
+                          };
+                        })}
+                        placeholder="Select pillow"
+                        searchPlaceholder="Search pillow..."
+                      />
+                    </div>
+
+                    <div className="col-span-3 space-y-2">
+                      <Label>Quantity</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={pillowQty}
+                        onChange={(e) => setPillowQty(Math.max(1, parseInt(e.target.value) || 1))}
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <Button type="button" onClick={handleAddPillowItem} className="w-full">
+                        <Plus className="h-4 w-4 mr-2" /> Add
+                      </Button>
+                    </div>
+                  </div>
+
+                  {(Array.isArray(formData.pillowItems) ? formData.pillowItems : []).map((item: any, index: number) => (
+                    <div key={`${item.pillowId}-${index}`} className="flex gap-4 items-end border p-4 rounded-lg bg-gray-50">
+                      <div className="flex-[2] space-y-2">
+                        <Label>Pillow</Label>
+                        <div className="text-sm font-medium py-2 px-3 bg-white rounded border">
+                          {item.pillowName || `#${item.pillowId}`}
+                        </div>
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <Label>Quantity</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.slice() : [];
+                            const qty = Math.max(1, parseInt(e.target.value) || 1);
+                            next[index] = { ...next[index], quantity: qty };
+                            const newTotal = calculateTotal(formData.items, next);
+                            setFormData({ ...formData, pillowItems: next, totalAmount: newTotal });
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <Label>Price</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={item.price}
+                          onChange={(e) => {
+                            const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.slice() : [];
+                            const nextPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                            next[index] = { ...next[index], price: nextPrice };
+                            const newTotal = calculateTotal(formData.items, next);
+                            setFormData({ ...formData, pillowItems: next, totalAmount: newTotal });
+                          }}
+                        />
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleRemovePillowItem(Number(item.pillowId))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 

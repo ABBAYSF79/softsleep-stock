@@ -269,6 +269,11 @@ router.get('/', authMiddleware, async (req, res) => {
             }
           }
         },
+        pillowItems: {
+          include: {
+            pillow: true
+          }
+        },
         confirmationUser: {
           select: {
             id: true,
@@ -325,6 +330,13 @@ router.get('/', authMiddleware, async (req, res) => {
           price: item.price,
           quantity: item.quantity
         })),
+        pillowItems: order.pillowItems.map((pi: any) => ({
+          id: pi.id,
+          pillowId: pi.pillowId,
+          pillowName: pi.pillow?.name,
+          quantity: pi.quantity,
+          price: pi.price
+        })),
         confirmationUser: order.confirmationUser
       };
     });
@@ -353,7 +365,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // Create new order
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { customerName, address, phone, totalAmount, items, deliveryServiceId, city, confirmationUserId, note, trackingCode } = req.body;
+    const { customerName, address, phone, totalAmount, items, deliveryServiceId, city, confirmationUserId, note, trackingCode, pillowItems } = req.body;
     console.log('Creating order for customer:', customerName);
     console.log('Items:', items);
     console.log('Delivery Service:', deliveryServiceId);
@@ -361,10 +373,12 @@ router.post('/', authMiddleware, async (req, res) => {
     console.log('Confirmation User:', confirmationUserId);
     console.log('Note:', note);
     console.log('Tracking Code:', trackingCode);
+    console.log('Pillow items:', pillowItems);
     
     let calculatedTotal = new Prisma.Decimal(0);
     let calculatedCommission = new Prisma.Decimal(0);
     const orderItems = [];
+    const orderPillowItems: any[] = [];
     
     // Get commission settings
     const commissionSettings = await prisma.commissionSettings.findFirst();
@@ -411,6 +425,35 @@ router.post('/', authMiddleware, async (req, res) => {
         price: variant.price
       });
     }
+
+    if (Array.isArray(pillowItems) && pillowItems.length > 0) {
+      for (const row of pillowItems) {
+        const pillowId = Number(row?.pillowId);
+        const qty = Number(row?.quantity);
+        if (!Number.isInteger(pillowId) || pillowId <= 0) {
+          return res.status(400).json({ error: `Invalid pillowId` });
+        }
+        if (!Number.isInteger(qty) || qty <= 0) {
+          return res.status(400).json({ error: `Invalid pillow quantity` });
+        }
+
+        const pillow = await prisma.pillow.findUnique({ where: { id: pillowId } });
+        if (!pillow) {
+          return res.status(400).json({ error: `Pillow ${pillowId} not found` });
+        }
+        if (pillow.stock < qty) {
+          return res.status(400).json({
+            error: `Insufficient pillow stock for ${pillow.name}. Available: ${pillow.stock}, Requested: ${qty}`,
+          });
+        }
+
+        orderPillowItems.push({
+          pillowId,
+          quantity: qty,
+          price: pillow.price,
+        });
+      }
+    }
     
     const finalTotal = totalAmount ? new Prisma.Decimal(totalAmount) : calculatedTotal;
     
@@ -431,7 +474,14 @@ router.post('/', authMiddleware, async (req, res) => {
         trackingCode: trackingCode || null,
         orderItems: {
           create: orderItems
-        }
+        },
+        ...(orderPillowItems.length
+          ? {
+              pillowItems: {
+                create: orderPillowItems,
+              },
+            }
+          : {})
       } as unknown as Prisma.OrderCreateInput,
       include: {
         user: {
@@ -449,6 +499,11 @@ router.post('/', authMiddleware, async (req, res) => {
                 size: true
               }
             }
+          }
+        },
+        pillowItems: {
+          include: {
+            pillow: true
           }
         },
         deliveryService: {
@@ -511,6 +566,13 @@ router.post('/', authMiddleware, async (req, res) => {
         price: item.price,
         quantity: item.quantity
       })),
+      pillowItems: order.pillowItems?.map((pi: any) => ({
+        id: pi.id,
+        pillowId: pi.pillowId,
+        pillowName: pi.pillow?.name,
+        quantity: pi.quantity,
+        price: pi.price
+      })) || [],
       confirmationUser: order.confirmationUser
     };
     
@@ -543,6 +605,11 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
                 size: true
               }
             }
+          }
+        },
+        pillowItems: {
+          include: {
+            pillow: true
           }
         }
       }
@@ -580,9 +647,39 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
                 }
               }
             }
+          },
+          pillowItems: {
+            include: {
+              pillow: true
+            }
           }
         }
       });
+
+      const applyPillowStockChange = async (pillowId: number, delta: number, reason: string, type: any) => {
+        const pillow = await tx.pillow.findUnique({ where: { id: pillowId } });
+        if (!pillow) return;
+        const previousStock = pillow.stock;
+        const newStock = previousStock + delta;
+        if (newStock < 0) throw new Error('Insufficient pillow stock');
+
+        await tx.pillow.update({
+          where: { id: pillowId },
+          data: { stock: newStock }
+        });
+
+        await tx.pillowStockHistory.create({
+          data: {
+            pillowId,
+            quantity: delta,
+            type,
+            reason,
+            previousStock,
+            newStock,
+            userId: req.user!.id
+          }
+        });
+      };
 
       // Only handle stock updates if status has changed
       if (newStatus && oldStatus !== newStatus) {
@@ -612,6 +709,15 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
               }
             });
           }
+
+          for (const pi of order.pillowItems || []) {
+            await applyPillowStockChange(
+              pi.pillowId,
+              -pi.quantity,
+              `Mattress order #${order.id} moved to ${newStatus}`,
+              'OUTGOING'
+            );
+          }
         } else if ((oldStatus === 'IN_PROCESS' || oldStatus === 'DELIVERED') && newStatus === 'PENDING') {
           // Increase stock (Restore) when order moves back to PENDING (Cancellation/Hold)
           for (const item of order.orderItems) {
@@ -636,6 +742,15 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
                 userId: req.user!.id
               }
             });
+          }
+
+          for (const pi of order.pillowItems || []) {
+            await applyPillowStockChange(
+              pi.pillowId,
+              pi.quantity,
+              `Mattress order #${order.id} reverted to PENDING from ${oldStatus}`,
+              'ADJUSTMENT'
+            );
           }
         } else if (newStatus === 'RETURNED') {
           // Increase stock when order is returned (from any status)
@@ -662,6 +777,15 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
               }
             });
           }
+
+          for (const pi of order.pillowItems || []) {
+            await applyPillowStockChange(
+              pi.pillowId,
+              pi.quantity,
+              `Mattress order #${order.id} returned from ${oldStatus}`,
+              'ADJUSTMENT'
+            );
+          }
         } else if (oldStatus === 'RETURNED' && (newStatus === 'IN_PROCESS' || newStatus === 'DELIVERED')) {
           // Decrease stock again if order is reprocessed after return
           for (const item of order.orderItems) {
@@ -686,6 +810,15 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
                 userId: req.user!.id
               }
             });
+          }
+
+          for (const pi of order.pillowItems || []) {
+            await applyPillowStockChange(
+              pi.pillowId,
+              -pi.quantity,
+              `Mattress order #${order.id} reprocessed after return to ${newStatus}`,
+              'OUTGOING'
+            );
           }
         }
       }
@@ -734,6 +867,11 @@ router.get('/:id', authMiddleware, async (req, res) => {
                 size: true
               }
             }
+          }
+        },
+        pillowItems: {
+          include: {
+            pillow: true
           }
         },
         user: {
@@ -792,6 +930,13 @@ router.get('/:id', authMiddleware, async (req, res) => {
         price: item.price,
         quantity: item.quantity
       })),
+      pillowItems: order.pillowItems?.map((pi: any) => ({
+        id: pi.id,
+        pillowId: pi.pillowId,
+        pillowName: pi.pillow?.name,
+        quantity: pi.quantity,
+        price: pi.price
+      })) || [],
       confirmationUser: order.confirmationUser
     };
     
@@ -894,6 +1039,7 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       city, 
       deliveryServiceId, 
       items, 
+      pillowItems,
       totalAmount,
       status,
       trackingCode,
@@ -919,7 +1065,7 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
     // Get current order with items
     const currentOrder = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { orderItems: true }
+      include: { orderItems: true, pillowItems: true }
     });
 
     if (!currentOrder) {
@@ -942,6 +1088,28 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
           // We don't log every single revert here to avoid spamming logs, 
           // but we could if strict auditing is needed.
         }
+
+        for (const pi of currentOrder.pillowItems) {
+          const pillow = await tx.pillow.findUnique({ where: { id: pi.pillowId } });
+          if (!pillow) continue;
+          const previousStock = pillow.stock;
+          const newStock = previousStock + pi.quantity;
+          await tx.pillow.update({
+            where: { id: pi.pillowId },
+            data: { stock: newStock }
+          });
+          await tx.pillowStockHistory.create({
+            data: {
+              pillowId: pi.pillowId,
+              quantity: pi.quantity,
+              type: 'ADJUSTMENT',
+              reason: `Advanced edit revert Order #${orderId}`,
+              previousStock,
+              newStock,
+              userId: req.user!.id
+            }
+          });
+        }
       }
 
       // 2. Delete old items
@@ -949,9 +1117,14 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
         where: { orderId }
       });
 
+      await tx.orderPillowItem.deleteMany({
+        where: { orderId }
+      });
+
       // 3. Prepare new items and calculate totals (if not provided)
       const newOrderItems = [];
       let calculatedTotal = new Prisma.Decimal(0);
+      let calculatedPillowTotal = new Prisma.Decimal(0);
       let calculatedCommission = new Prisma.Decimal(0);
       const commissionSettings = await tx.commissionSettings.findFirst();
 
@@ -988,7 +1161,31 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       }
 
       // 4. Update Order
-      const finalTotal = totalAmount ? new Prisma.Decimal(totalAmount) : calculatedTotal;
+      const newPillowItems = [];
+      if (Array.isArray(pillowItems)) {
+        for (const item of pillowItems) {
+          const pillowId = parseInt(item.pillowId);
+          const quantity = parseInt(item.quantity);
+          if (!Number.isInteger(pillowId) || pillowId <= 0) throw new Error('Invalid pillowId');
+          if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Invalid pillow quantity');
+
+          const pillow = await tx.pillow.findUnique({ where: { id: pillowId } });
+          if (!pillow) throw new Error(`Pillow ${pillowId} not found`);
+
+          const price = new Prisma.Decimal(item.price ?? pillow.price);
+          calculatedPillowTotal = calculatedPillowTotal.add(price.mul(new Prisma.Decimal(quantity)));
+
+          newPillowItems.push({
+            pillowId,
+            quantity,
+            price
+          });
+        }
+      }
+
+      const finalTotal = totalAmount
+        ? new Prisma.Decimal(totalAmount)
+        : calculatedTotal.add(calculatedPillowTotal);
       const finalStatus = status || currentOrder.status;
 
       const order = await tx.order.update({
@@ -1006,7 +1203,14 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
           note,
           orderItems: {
             create: newOrderItems
-          }
+          },
+          ...(newPillowItems.length
+            ? {
+                pillowItems: {
+                  create: newPillowItems
+                }
+              }
+            : {})
         },
         include: {
           orderItems: {
@@ -1015,6 +1219,11 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
                    include: { product: true, size: true }
                 }
              }
+          },
+          pillowItems: {
+            include: {
+              pillow: true
+            }
           }
         }
       });
@@ -1031,6 +1240,28 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
              where: { id: item.variantId },
              data: { stock: { decrement: item.quantity } }
            });
+        }
+
+        for (const pi of newPillowItems) {
+          const pillow = await tx.pillow.findUnique({ where: { id: pi.pillowId } });
+          if (!pillow) continue;
+          const previousStock = pillow.stock;
+          const newStock = previousStock - pi.quantity;
+          await tx.pillow.update({
+            where: { id: pi.pillowId },
+            data: { stock: newStock }
+          });
+          await tx.pillowStockHistory.create({
+            data: {
+              pillowId: pi.pillowId,
+              quantity: -pi.quantity,
+              type: 'OUTGOING',
+              reason: `Advanced edit apply Order #${orderId}`,
+              previousStock,
+              newStock,
+              userId: req.user!.id
+            }
+          });
         }
       }
 
