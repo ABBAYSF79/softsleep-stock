@@ -73,7 +73,7 @@ export const PillowOperationDialog = ({ open, onOpenChange, pillow }: PillowOper
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Pillow Stock Operation</DialogTitle>
+          <DialogTitle>Accessoires Stock Operation</DialogTitle>
           <DialogDescription>
             {pillow.name}
             <br />
@@ -157,4 +157,3 @@ export const PillowOperationDialog = ({ open, onOpenChange, pillow }: PillowOper
     </Dialog>
   );
 };
-

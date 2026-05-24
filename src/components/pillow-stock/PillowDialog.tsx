@@ -54,19 +54,19 @@ export const PillowDialog = ({ open, onOpenChange }: PillowDialogProps) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Create Pillow</DialogTitle>
-          <DialogDescription>New pillow item with independent stock.</DialogDescription>
+          <DialogTitle>Create Accessoire</DialogTitle>
+          <DialogDescription>New accessoire item with independent stock.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="pillow-name">Pillow name</Label>
+              <Label htmlFor="pillow-name">Accessoire name</Label>
               <Input
                 id="pillow-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Oreiller Premium"
+                placeholder="e.g. Accessoire Premium"
                 required
               />
             </div>
@@ -110,4 +110,3 @@ export const PillowDialog = ({ open, onOpenChange }: PillowDialogProps) => {
     </Dialog>
   );
 };
-

@@ -54,7 +54,7 @@ export const PillowOrderPreviewDialog = ({
         <DialogHeader>
           <DialogTitle className="pr-10">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="truncate">Pillow Order #{localOrder.id}</div>
+              <div className="truncate">Accessoires Order #{localOrder.id}</div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" disabled={statusBusy} className="shrink-0">
@@ -119,7 +119,7 @@ export const PillowOrderPreviewDialog = ({
 
         <div className="mt-6 border rounded-md overflow-hidden">
           <div className="grid grid-cols-[1fr_120px_120px] gap-2 px-3 py-2 text-xs text-gray-500 bg-gray-50">
-            <div>Pillow</div>
+            <div>Accessoire</div>
             <div className="text-right">Price</div>
             <div className="text-right">Qty</div>
           </div>

@@ -26,7 +26,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
+import api from "@/lib/api";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
@@ -93,15 +93,10 @@ export const OrderManagementDialog = ({
   const { data: confirmationUsers = [] } = useQuery<ConfirmationUser[]>({
     queryKey: ["confirmationUsers"],
     queryFn: async () => {
-      const response = await axios.get(
-        user?.role === "ADMIN" ? "/api/confirmation-users" : "/api/confirmation-users/my-team",
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
+      const { data } = await api.get(
+        user?.role === "ADMIN" ? "/confirmation-users" : "/confirmation-users/my-team"
       );
-      return response.data || [];
+      return data || [];
     },
     enabled: !order,
   });
@@ -641,7 +636,7 @@ export const OrderManagementDialog = ({
                 {pillowItems.length > 0 && (
                   <div className="overflow-hidden rounded-lg border">
                     <div className="grid grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
-                      <div>Pillow (supplement)</div>
+                      <div>Accessoire (supplement)</div>
                       <div className="text-right">Qty</div>
                       <div className="text-right">Price</div>
                       <div className="text-right">Total</div>
@@ -857,7 +852,7 @@ export const OrderManagementDialog = ({
 
                 <div className="border rounded-md p-4">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">Pillows (supplement)</div>
+                    <div className="font-medium">Accessoires (supplement)</div>
                     <Badge variant="secondary" className="tabular-nums">
                       {pillowItems.length}
                     </Badge>
@@ -871,7 +866,7 @@ export const OrderManagementDialog = ({
                     className="mt-3 grid grid-cols-12 gap-3 items-end"
                   >
                     <div className="col-span-8 space-y-2">
-                      <Label>Pillow</Label>
+                      <Label>Accessoire</Label>
                       <SearchableSelect
                         value={selectedPillowId}
                         onValueChange={setSelectedPillowId}
@@ -882,8 +877,8 @@ export const OrderManagementDialog = ({
                             disabled: Number(p.stock ?? 0) <= 0,
                           })) || []
                         }
-                        placeholder="Select pillow"
-                        searchPlaceholder="Search pillow..."
+                        placeholder="Select accessoire"
+                        searchPlaceholder="Search accessoire..."
                       />
                     </div>
                     <div className="col-span-2 space-y-2">

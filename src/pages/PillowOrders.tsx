@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Package, Plus, RefreshCw, Search } from "lucide-react";
+import { Eye, LineChart, Package, Plus, RefreshCw, Search } from "lucide-react";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { usePaginatedPillowOrders, useUpdatePillowOrderStatus } from "@/hooks/useApi";
 import { PillowOrderDialog } from "@/components/pillow-orders/PillowOrderDialog";
@@ -85,7 +85,7 @@ const PillowOrders = () => {
   const errorMessage =
     (error as any)?.response?.data?.error ||
     (error as any)?.message ||
-    "Error loading pillow orders";
+    "Error loading accessoires orders";
 
   const getStatusBadge = (status: string) => {
     const s = (ORDER_STATUSES as any)[status];
@@ -107,8 +107,8 @@ const PillowOrders = () => {
     <MainLayout>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Pillow Orders</h1>
-          <div className="text-sm text-gray-500">Orders for pillows only (separate from mattress orders)</div>
+          <h1 className="text-2xl font-bold">Accessoires Orders</h1>
+          <div className="text-sm text-gray-500">Orders for accessoires only (separate from mattress orders)</div>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
@@ -118,7 +118,17 @@ const PillowOrders = () => {
               className="gap-2"
             >
               <Package className="h-4 w-4" />
-              Pillow Stock
+              Accessoires Stock
+            </Button>
+          )}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              onClick={() => navigate("/pillow-stock-analytics")}
+              className="gap-2"
+            >
+              <LineChart className="h-4 w-4" />
+              Analytics
             </Button>
           )}
           <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} className="gap-2">
@@ -181,7 +191,7 @@ const PillowOrders = () => {
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10}>
-                  <div className="py-8 text-center text-sm text-gray-500">No pillow orders found.</div>
+                  <div className="py-8 text-center text-sm text-gray-500">No accessoires orders found.</div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -267,8 +277,8 @@ const PillowOrders = () => {
       <Dialog open={isStockUnlockOpen} onOpenChange={(open) => !isStockUnlocking && setIsStockUnlockOpen(open)}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>Open Pillow Stock</DialogTitle>
-            <DialogDescription>Enter security code to access pillow stock management.</DialogDescription>
+            <DialogTitle>Open Accessoires Stock</DialogTitle>
+            <DialogDescription>Enter security code to access accessoires stock management.</DialogDescription>
           </DialogHeader>
           <form
             onSubmit={async (e) => {

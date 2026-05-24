@@ -165,8 +165,8 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[760px]">
         <DialogHeader>
-          <DialogTitle>Create Pillow Order</DialogTitle>
-          <DialogDescription>Separate order flow for pillows only.</DialogDescription>
+          <DialogTitle>Create Accessoires Order</DialogTitle>
+          <DialogDescription>Separate order flow for accessoires only.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
@@ -212,16 +212,16 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
             </div>
 
             <div className="border rounded-md p-4">
-              <div className="font-medium mb-3">Pillows</div>
+              <div className="font-medium mb-3">Accessoires</div>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_140px] gap-3 items-end">
                 <div className="grid gap-2">
-                  <Label>Pillow</Label>
+                  <Label>Accessoire</Label>
                   <SearchableSelect
                     value={selectedPillowId}
                     onValueChange={setSelectedPillowId}
                     options={pillowOptions}
-                    placeholder="Select pillow"
-                    searchPlaceholder="Search pillow..."
+                    placeholder="Select accessoire"
+                    searchPlaceholder="Search accessoire..."
                   />
                 </div>
                 <div className="grid gap-2">
@@ -242,7 +242,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
               {items.length > 0 && (
                 <div className="mt-4 border rounded-md overflow-hidden">
                   <div className="grid grid-cols-[1fr_110px_110px_44px] gap-2 px-3 py-2 text-xs text-gray-500 bg-gray-50">
-                    <div>Pillow</div>
+                    <div>Accessoire</div>
                     <div className="text-right">Price</div>
                     <div className="text-right">Qty</div>
                     <div />

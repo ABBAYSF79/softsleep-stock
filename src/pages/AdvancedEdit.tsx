@@ -166,7 +166,7 @@ const AdvancedEdit = () => {
         pillowItems: Array.isArray(data.pillowItems)
           ? data.pillowItems.map((pi: any) => ({
               pillowId: pi.pillowId,
-              pillowName: pi.pillowName || pi.pillow?.name || "Pillow",
+              pillowName: pi.pillowName || pi.pillow?.name || "Accessoire",
               quantity: Number(pi.quantity),
               price: parseFloat(pi.price ?? pi.pillow?.price ?? 0),
             }))
@@ -717,11 +717,11 @@ const AdvancedEdit = () => {
                 ))}
 
                 <div className="border-t pt-4 space-y-4">
-                  <div className="text-sm font-semibold">Pillow Supplements</div>
+                  <div className="text-sm font-semibold">Accessoires (supplement)</div>
 
                   <div className="grid grid-cols-12 gap-4 items-end">
                     <div className="col-span-7 space-y-2">
-                      <Label>Pillow</Label>
+                      <Label>Accessoire</Label>
                       <SearchableSelect
                         value={selectedPillowId}
                         onValueChange={(val) => setSelectedPillowId(val)}
@@ -734,8 +734,8 @@ const AdvancedEdit = () => {
                             disabled: stock === 0,
                           };
                         })}
-                        placeholder="Select pillow"
-                        searchPlaceholder="Search pillow..."
+                        placeholder="Select accessoire"
+                        searchPlaceholder="Search accessoire..."
                       />
                     </div>
 
@@ -759,7 +759,7 @@ const AdvancedEdit = () => {
                   {(Array.isArray(formData.pillowItems) ? formData.pillowItems : []).map((item: any, index: number) => (
                     <div key={`${item.pillowId}-${index}`} className="flex gap-4 items-end border p-4 rounded-lg bg-gray-50">
                       <div className="flex-[2] space-y-2">
-                        <Label>Pillow</Label>
+                        <Label>Accessoire</Label>
                         <div className="text-sm font-medium py-2 px-3 bg-white rounded border">
                           {item.pillowName || `#${item.pillowId}`}
                         </div>

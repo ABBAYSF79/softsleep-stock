@@ -428,6 +428,60 @@ export const usePillowStockHistory = (pillowId?: number) => {
   });
 };
 
+export const usePillowStockAnalytics = (params?: { from?: string; to?: string; pillowId?: number }) => {
+  return useQuery({
+    queryKey: ['pillow-stock-analytics', params?.from ?? null, params?.to ?? null, params?.pillowId ?? 'all'],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-stock/analytics', {
+        params: {
+          ...(params?.from ? { from: params.from } : {}),
+          ...(params?.to ? { to: params.to } : {}),
+          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
+        },
+        timeout: 20000,
+      });
+      return data;
+    },
+    retry: 1,
+  });
+};
+
+export const usePaginatedPillowStockHistory = (params: {
+  page: number;
+  limit: number;
+  pillowId?: number;
+  from?: string;
+  to?: string;
+  search?: string;
+}) => {
+  return useQuery({
+    queryKey: [
+      'pillow-stock-history-query',
+      params.page,
+      params.limit,
+      params.pillowId ?? 'all',
+      params.from ?? null,
+      params.to ?? null,
+      params.search ?? '',
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/pillow-stock/history-query', {
+        params: {
+          page: params.page,
+          limit: params.limit,
+          ...(params.pillowId ? { pillowId: params.pillowId } : {}),
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+          ...(params.search ? { search: params.search } : {}),
+        },
+        timeout: 20000,
+      });
+      return data;
+    },
+    retry: 1,
+  });
+};
+
 export const useCreatePillow = () => {
   const queryClient = useQueryClient();
 
@@ -439,7 +493,7 @@ export const useCreatePillow = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Pillow created successfully');
+      toast.success('Accessoire created successfully');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to create pillow');
@@ -458,7 +512,7 @@ export const usePillowSupply = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Pillow stock updated');
+      toast.success('Accessoires stock updated');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to add supply');
@@ -477,7 +531,7 @@ export const usePillowOutgoing = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Pillow stock updated');
+      toast.success('Accessoires stock updated');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to remove stock');
@@ -516,7 +570,7 @@ export const useCreatePillowOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
       queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Pillow order created');
+      toast.success('Accessoires order created');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to create pillow order');

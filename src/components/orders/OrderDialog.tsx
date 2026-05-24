@@ -24,7 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Trash2, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
+import api from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -83,17 +83,10 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
   const { data: confirmationUsers = [] } = useQuery<ConfirmationUser[]>({
     queryKey: ["confirmationUsers"],
     queryFn: async () => {
-      const response = await axios.get(
-        user?.role === "ADMIN" 
-          ? "/api/confirmation-users"
-          : "/api/confirmation-users/my-team",
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
+      const { data } = await api.get(
+        user?.role === "ADMIN" ? "/confirmation-users" : "/confirmation-users/my-team"
       );
-      return response.data || [];
+      return data || [];
     },
     enabled: !order // Only fetch when creating a new order
   });

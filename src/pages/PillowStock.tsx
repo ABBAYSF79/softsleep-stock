@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -30,14 +30,48 @@ const PillowStock = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isOperationOpen, setIsOperationOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("pillow-stock-unlocked") === "1";
+  });
   const [password, setPassword] = useState("");
 
   const { data: pillows, isLoading, error, refetch, isRefetching } = usePillowStock();
 
-  useEffect(() => {
-    setIsUnlocked(sessionStorage.getItem("pillow-stock-unlocked") === "1");
-  }, []);
+  const filtered = (pillows || []).filter((p: any) => {
+    if (!searchQuery) return true;
+    return String(p.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const totalUnits = filtered.reduce((sum: number, p: any) => sum + (p.stock || 0), 0);
+  const outOfStock = filtered.filter((p: any) => (p.stock || 0) === 0).length;
+
+  const {
+    currentPage,
+    itemsPerPage,
+    totalPages,
+    startIndex,
+    endIndex,
+    handlePageChange,
+    handleItemsPerPageChange,
+  } = usePagination({
+    totalItems: filtered.length,
+    initialItemsPerPage: 10,
+    storageKey: "pillow-stock-pagination-limit",
+  });
+
+  const paginated = filtered.slice(startIndex, endIndex);
+
+  const getStockBadge = (stock: number) => {
+    if (stock === 0) return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Out</Badge>;
+    if (stock <= 10) return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Low</Badge>;
+    return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">In</Badge>;
+  };
+  
+  const errorMessage =
+    (error as any)?.response?.data?.error ||
+    (error as any)?.message ||
+    "Error loading accessoires stock";
 
   if (!isUnlocked) {
     return (
@@ -47,12 +81,12 @@ const PillowStock = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5" />
-                Pillow Stock Locked
+                Accessoires Stock Locked
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="text-sm text-muted-foreground">
-                Enter security code to access pillow stock management.
+                Enter security code to access accessoires stock management.
               </div>
               <div className="grid gap-2">
                 <Input
@@ -90,47 +124,12 @@ const PillowStock = () => {
     );
   }
 
-  const filtered = (pillows || []).filter((p: any) => {
-    if (!searchQuery) return true;
-    return String(p.name || "").toLowerCase().includes(searchQuery.toLowerCase());
-  });
-
-  const totalUnits = filtered.reduce((sum: number, p: any) => sum + (p.stock || 0), 0);
-  const outOfStock = filtered.filter((p: any) => (p.stock || 0) === 0).length;
-
-  const {
-    currentPage,
-    itemsPerPage,
-    totalPages,
-    startIndex,
-    endIndex,
-    handlePageChange,
-    handleItemsPerPageChange,
-  } = usePagination({
-    totalItems: filtered.length,
-    initialItemsPerPage: 10,
-    storageKey: "pillow-stock-pagination-limit",
-  });
-
-  const paginated = filtered.slice(startIndex, endIndex);
-
-  const getStockBadge = (stock: number) => {
-    if (stock === 0) return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Out</Badge>;
-    if (stock <= 10) return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Low</Badge>;
-    return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">In</Badge>;
-  };
-  
-  const errorMessage =
-    (error as any)?.response?.data?.error ||
-    (error as any)?.message ||
-    "Error loading pillow stock";
-
   return (
     <MainLayout>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Pillow Stock</h1>
-          <div className="text-sm text-gray-500">Independent stock control for pillows</div>
+          <h1 className="text-2xl font-bold">Accessoires Stock</h1>
+          <div className="text-sm text-gray-500">Independent stock control for accessoires</div>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -144,7 +143,7 @@ const PillowStock = () => {
           </Button>
           <Button onClick={() => setIsCreateOpen(true)} className="gap-2 bg-matles-600 hover:bg-matles-700">
             <Plus className="h-4 w-4" />
-            Create Pillow
+            Create Accessoire
           </Button>
         </div>
       </div>
@@ -152,7 +151,7 @@ const PillowStock = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pillows</CardTitle>
+            <CardTitle className="text-sm font-medium">Accessoires</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{filtered.length}</div>
@@ -181,7 +180,7 @@ const PillowStock = () => {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search pillow..."
+              placeholder="Search accessoire..."
               className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -192,7 +191,7 @@ const PillowStock = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Pillow</TableHead>
+              <TableHead>Accessoire</TableHead>
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Stock</TableHead>
               <TableHead>Created</TableHead>
@@ -221,7 +220,7 @@ const PillowStock = () => {
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6}>
-                  <div className="py-8 text-center text-sm text-gray-500">No pillows found.</div>
+                  <div className="py-8 text-center text-sm text-gray-500">No accessoires found.</div>
                 </TableCell>
               </TableRow>
             ) : (
