@@ -77,6 +77,7 @@ const ConfirmationTeamOverview = () => {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [userFilter, setUserFilter] = useState<string>("ALL");
   const [confirmationUserFilter, setConfirmationUserFilter] = useState<string>("ALL");
+  const [productFilter, setProductFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const [dateFilter, setDateFilter] = useState<string>("custom");
   const itemsPerPage = 10;
@@ -120,9 +121,32 @@ const ConfirmationTeamOverview = () => {
     
     const matchesConfirmationUser = confirmationUserFilter === "ALL" || 
       order.confirmationUser?.id?.toString() === confirmationUserFilter;
+
+    const orderItems = Array.isArray(order?.items) ? order.items : Array.isArray(order?.orderItems) ? order.orderItems : [];
+    const matchesProduct =
+      productFilter === "ALL" ||
+      orderItems.some((item: any) => {
+        const pid = item?.productId ?? item?.variant?.productId ?? item?.product?.id ?? item?.variant?.product?.id;
+        return pid?.toString?.() === productFilter;
+      });
     
-    return matchesSearch && matchesDate && matchesStatus && matchesUser && matchesConfirmationUser;
+    return matchesSearch && matchesDate && matchesStatus && matchesUser && matchesConfirmationUser && matchesProduct;
   }) || [];
+
+  const productOptions = (() => {
+    const map = new Map<string, string>();
+    (orders || []).forEach((order: any) => {
+      const items = Array.isArray(order?.items) ? order.items : Array.isArray(order?.orderItems) ? order.orderItems : [];
+      items.forEach((item: any) => {
+        const pid = item?.productId ?? item?.variant?.productId ?? item?.product?.id ?? item?.variant?.product?.id;
+        const pname = item?.product?.name ?? item?.variant?.product?.name ?? item?.productName ?? item?.variant?.productName;
+        if (pid != null && pname) map.set(String(pid), String(pname));
+      });
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  })();
 
   // Get confirmation users for selected user from orders
   const getConfirmationUsersForUser = (userId: string) => {
@@ -272,7 +296,7 @@ const ConfirmationTeamOverview = () => {
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -311,6 +335,19 @@ const ConfirmationTeamOverview = () => {
               <SelectItem value="IN_PROCESS">In Process</SelectItem>
               <SelectItem value="PENDING">Pending</SelectItem>
               <SelectItem value="RETURNED">Returned</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={productFilter} onValueChange={setProductFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by product" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Products</SelectItem>
+              {productOptions.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={userFilter} onValueChange={handleUserFilterChange}>
