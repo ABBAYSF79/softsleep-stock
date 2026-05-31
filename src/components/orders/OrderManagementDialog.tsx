@@ -88,6 +88,7 @@ export const OrderManagementDialog = ({
   const queryClient = useQueryClient();
 
   const isAdmin = user?.role === "ADMIN";
+  const canOverrideTotal = user?.role === "ADMIN" || user?.role === "SALES";
   const canEditTrackingCode = isViewing && isAdmin && status === "IN_PROCESS";
 
   const { data: confirmationUsers = [] } = useQuery<ConfirmationUser[]>({
@@ -320,12 +321,13 @@ export const OrderManagementDialog = ({
     return total * 0.1;
   };
 
-  const manualTotalNumber =
-    manualTotal === null
+  const manualTotalNumber = canOverrideTotal
+    ? manualTotal === null
       ? null
       : Number.isFinite(parseFloat(String(manualTotal)))
         ? parseFloat(String(manualTotal))
-        : null;
+        : null
+    : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -922,7 +924,7 @@ export const OrderManagementDialog = ({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 md:items-end">
-                  {isAdmin && (
+                  {canOverrideTotal && (
                     <div className="space-y-2">
                       <Label>Override total</Label>
                       <Input

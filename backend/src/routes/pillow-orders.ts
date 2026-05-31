@@ -150,8 +150,9 @@ router.post('/', authMiddleware, async (req, res) => {
       }, 0);
 
       let finalTotal = total;
+      const canOverrideTotal = req.user.role === 'ADMIN' || req.user.role === 'SALES';
       if (totalAmountRaw !== undefined && totalAmountRaw !== null && String(totalAmountRaw).trim() !== '') {
-        if (req.user.role !== 'ADMIN') throw new Error('Forbidden total override');
+        if (!canOverrideTotal) throw new Error('Forbidden total override');
         const parsed = Number(totalAmountRaw);
         if (!Number.isFinite(parsed) || parsed < 0) throw new Error('Invalid totalAmount');
         finalTotal = parsed;

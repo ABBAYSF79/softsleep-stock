@@ -43,7 +43,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
   const [items, setItems] = useState<OrderItemDraft[]>([]);
 
   const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const canOverrideTotal = user?.role === "ADMIN" || user?.role === "SALES";
   const { data: pillows = [] } = usePillowStock();
   const { data: deliveryServices = [] } = useDeliveryServices();
   const { mutate: createOrder, isPending } = useCreatePillowOrder();
@@ -99,7 +99,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
 
   const total = items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0);
   const manualTotalNumber =
-    isAdmin && manualTotal.trim() !== "" && Number.isFinite(Number(manualTotal)) ? Number(manualTotal) : null;
+    canOverrideTotal && manualTotal.trim() !== "" && Number.isFinite(Number(manualTotal)) ? Number(manualTotal) : null;
   const displayedTotal = manualTotalNumber ?? total;
 
   const addItem = () => {
@@ -149,7 +149,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
       deliveryServiceId: Number(deliveryServiceId),
       items: items.map((i) => ({ pillowId: i.pillowId, quantity: i.quantity })),
     };
-    if (isAdmin && manualTotalNumber !== null) payload.totalAmount = manualTotalNumber;
+    if (canOverrideTotal && manualTotalNumber !== null) payload.totalAmount = manualTotalNumber;
 
     if (!payload.customerName) return;
     if (!payload.phone) return;
@@ -269,7 +269,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
                 <div className="text-lg font-bold">{formatPrice(displayedTotal)} MAD</div>
               </div>
 
-              {isAdmin && (
+              {canOverrideTotal && (
                 <div className="mt-4 grid gap-2">
                   <Label>Manual total</Label>
                   <Input
