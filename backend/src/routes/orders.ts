@@ -185,6 +185,9 @@ router.get('/', authMiddleware, async (req, res) => {
       where.OR = [
         { customerName: { contains: searchStr } }, // Remove mode: 'insensitive' for MySQL compatibility if needed, but Prisma usually handles it
         { phone: { contains: searchStr } },
+        { city: { contains: searchStr } },
+        { address: { contains: searchStr } },
+        { deliveryService: { name: { contains: searchStr } } },
         { trackingCode: { contains: searchStr } },
         // For ID search, we need to check if it's a valid number
         ...(isNaN(Number(searchStr)) ? [] : [{ id: Number(searchStr) }])

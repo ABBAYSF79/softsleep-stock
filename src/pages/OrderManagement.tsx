@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -36,7 +37,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDeleteOrder, useDeliveryServices, usePaginatedOrders, useUsers } from "@/hooks/useApi";
+import { useDeleteOrder, usePaginatedOrders, useUsers } from "@/hooks/useApi";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
 import { exportOrdersToExcel } from "@/utils/excel-export";
@@ -63,14 +65,15 @@ const OrderManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
-  const { data: deliveryServices } = useDeliveryServices();
   const { data: users } = useUsers();
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [salesmanIdFilter, setSalesmanIdFilter] = useState<string>("all");
-  const [deliveryServiceIdFilter, setDeliveryServiceIdFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
+
+  const debouncedSearch = useDebounce(searchQuery, 150);
 
   const dateParams = useMemo(() => {
     if (dateFilter === "all") return {};
@@ -114,17 +117,17 @@ const OrderManagement = () => {
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
+    if (searchQuery.trim()) count += 1;
     if (statusFilter !== "all") count += 1;
     if (isAdmin && salesmanIdFilter !== "all") count += 1;
-    if (deliveryServiceIdFilter !== "all") count += 1;
     if (dateFilter !== "all") count += 1;
     return count;
-  }, [statusFilter, isAdmin, salesmanIdFilter, deliveryServiceIdFilter, dateFilter]);
+  }, [searchQuery, statusFilter, isAdmin, salesmanIdFilter, dateFilter]);
 
   const clearFilters = () => {
+    setSearchQuery("");
     setStatusFilter("all");
     setSalesmanIdFilter("all");
-    setDeliveryServiceIdFilter("all");
     setDateFilter("all");
     setCustomDateRange(undefined);
   };
@@ -134,17 +137,17 @@ const OrderManagement = () => {
       page: currentPage,
       limit: itemsPerPage,
       status: statusFilter,
+      search: debouncedSearch,
       ...(isAdmin && salesmanIdFilter !== "all" ? { salesmanId: salesmanIdFilter } : {}),
-      ...(deliveryServiceIdFilter !== "all" ? { deliveryServiceId: deliveryServiceIdFilter } : {}),
       ...dateParams,
     }),
     [
       currentPage,
       itemsPerPage,
+      debouncedSearch,
       statusFilter,
       isAdmin,
       salesmanIdFilter,
-      deliveryServiceIdFilter,
       dateParams,
     ]
   );
@@ -298,11 +301,11 @@ const OrderManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, salesmanIdFilter, deliveryServiceIdFilter, dateFilter, dateParams]);
+  }, [searchQuery, statusFilter, salesmanIdFilter, dateFilter, dateParams]);
 
   useEffect(() => {
     clearSelection();
-  }, [currentPage, itemsPerPage, statusFilter, salesmanIdFilter, deliveryServiceIdFilter, dateFilter, dateParams, clearSelection]);
+  }, [currentPage, itemsPerPage, searchQuery, statusFilter, salesmanIdFilter, dateFilter, dateParams, clearSelection]);
 
   const pageRowIds = useMemo(() => orders.map((o: any) => Number(o.id)).filter((n: number) => Number.isFinite(n)), [orders]);
 
@@ -388,6 +391,15 @@ const OrderManagement = () => {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground">Search</div>
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search ..."
+                />
+              </div>
+
+              <div className="space-y-1">
                 <div className="text-xs font-medium text-muted-foreground">Status</div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
@@ -422,22 +434,6 @@ const OrderManagement = () => {
                   />
                 </div>
               )}
-
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground">Delivery service</div>
-                <SearchableSelect
-                  value={deliveryServiceIdFilter}
-                  onValueChange={(value) => setDeliveryServiceIdFilter(value || "all")}
-                  options={[
-                    { label: "All", value: "all" },
-                    ...(Array.isArray(deliveryServices)
-                      ? deliveryServices.map((s: any) => ({ label: s.name, value: String(s.id) }))
-                      : []),
-                  ]}
-                  placeholder="All"
-                  searchPlaceholder="Search service..."
-                />
-              </div>
 
               <div className="space-y-1">
                 <div className="text-xs font-medium text-muted-foreground">Date</div>
@@ -508,6 +504,7 @@ const OrderManagement = () => {
                     isSelected={selectedIds.has(Number(order.id))}
                     onRowClick={handleViewOrder}
                     onToggleSelected={handleToggleSelected}
+                    onCopyPhone={copyToClipboard}
                     onCopyTracking={copyToClipboard}
                     onOpenBarcode={handleOpenBarcode}
                     onNavigateAdvanced={handleNavigateAdvanced}
@@ -645,6 +642,7 @@ type OrderRowProps = {
   isSelected: boolean;
   onRowClick: (order: any) => void;
   onToggleSelected: (id: number) => void;
+  onCopyPhone: (value: string) => void;
   onCopyTracking: (value: string) => void;
   onOpenBarcode: (value: string) => void;
   onNavigateAdvanced: (id: number) => void;
@@ -658,6 +656,7 @@ const OrderRow = memo(function OrderRow({
   isSelected,
   onRowClick,
   onToggleSelected,
+  onCopyPhone,
   onCopyTracking,
   onOpenBarcode,
   onNavigateAdvanced,
@@ -679,12 +678,13 @@ const OrderRow = memo(function OrderRow({
       <TableCell>{order.customerName}</TableCell>
       <TableCell onClick={(e) => e.stopPropagation()}>
         {order.phone ? (
-          <a
-            href={`tel:${String(order.phone).replace(/\s+/g, "")}`}
+          <button
+            type="button"
+            onClick={() => onCopyPhone(String(order.phone).trim())}
             className="text-primary hover:underline tabular-nums"
           >
             {order.phone}
-          </a>
+          </button>
         ) : (
           "-"
         )}
