@@ -49,6 +49,11 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       path: "/stock",
       adminOnly: true,
     },
+     {
+      title: "Order",
+      icon: <ShoppingCart className="h-5 w-5" />,
+      path: "/orders",
+    },
     {
       title: "Accessoires Orders",
       icon: <ShoppingCart className="h-5 w-5" />,
@@ -59,6 +64,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       icon: <ShoppingCart className="h-5 w-5" />,
       path: "/orders-management",
     },
+    
     {
       title: "Sales Overview",
       icon: <LineChart className="h-5 w-5" />,
