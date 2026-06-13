@@ -458,7 +458,8 @@ router.post('/', authMiddleware, async (req, res) => {
       }
     }
     
-    const finalTotal = totalAmount ? new Prisma.Decimal(totalAmount) : calculatedTotal;
+    const hasManualTotal = totalAmount !== undefined && totalAmount !== null && String(totalAmount).trim() !== '';
+    const finalTotal = hasManualTotal ? new Prisma.Decimal(totalAmount) : calculatedTotal;
     
     // Create order without affecting stock (PENDING status)
     const order = await prisma.order.create({
@@ -1186,7 +1187,8 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
         }
       }
 
-      const finalTotal = totalAmount
+      const hasManualTotal = totalAmount !== undefined && totalAmount !== null && String(totalAmount).trim() !== '';
+      const finalTotal = hasManualTotal
         ? new Prisma.Decimal(totalAmount)
         : calculatedTotal.add(calculatedPillowTotal);
       const finalStatus = status || currentOrder.status;

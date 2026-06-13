@@ -25,6 +25,15 @@ export interface Order {
   city?: string;
   address?: string;
   orderItems: OrderItem[];
+  items?: OrderItem[];
+  pillowItems?: Array<{
+    id?: number;
+    pillowId?: number;
+    pillowName?: string;
+    name?: string;
+    price: number;
+    quantity: number;
+  }>;
   deliveryService?: { name: string };
   trackingCode?: string;
 }

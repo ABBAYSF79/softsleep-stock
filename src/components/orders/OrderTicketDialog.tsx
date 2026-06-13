@@ -18,12 +18,20 @@ interface OrderTicketDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: any;
+  requireInProcessTracking?: boolean;
 }
 
-export const OrderTicketDialog = ({ open, onOpenChange, order }: OrderTicketDialogProps) => {
+export const OrderTicketDialog = ({
+  open,
+  onOpenChange,
+  order,
+  requireInProcessTracking = true,
+}: OrderTicketDialogProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const componentRef = useRef<HTMLDivElement>(null);
-  const canDownloadTicket = order?.status === "IN_PROCESS" && !!order?.trackingCode;
+  const canDownloadTicket = requireInProcessTracking
+    ? order?.status === "IN_PROCESS" && !!order?.trackingCode
+    : true;
   
   const handlePrint = useReactToPrint({
     contentRef: componentRef,

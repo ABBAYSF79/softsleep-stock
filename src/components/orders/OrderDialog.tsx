@@ -342,7 +342,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
           address,
           phone,
           city: selectedCity,
-          totalAmount: manualTotal || calculateTotal(),
+          totalAmount: manualTotal ?? calculateTotal(),
           deliveryServiceId: parseInt(selectedDeliveryService),
           items: orderItems.map(item => ({
             variantId: item.variantId,

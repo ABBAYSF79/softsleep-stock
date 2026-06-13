@@ -20,6 +20,7 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { DeleteConfirmDialog } from "@/components/common/DeleteConfirmDialog";
 import { FloatingActionBar } from "@/components/common/FloatingActionBar";
 import { OrderManagementDialog } from "@/components/orders/OrderManagementDialog";
+import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -45,7 +46,7 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, RotateCw, Trash2 } from "lucide-react";
+import { Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Trash2 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, startOfDay, startOfMonth, subDays } from "date-fns";
 
@@ -59,6 +60,8 @@ const OrderManagement = () => {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
+  const [isTicketOpen, setIsTicketOpen] = useState(false);
+  const [ticketOrder, setTicketOrder] = useState<any>(null);
 
   const [barcodeValue, setBarcodeValue] = useState<string | null>(null);
 
@@ -209,29 +212,36 @@ const OrderManagement = () => {
 
   const buildOrderCopyText = useCallback((order: any) => {
     const lines: string[] = [];
-    lines.push(`Customer: ${order.customerName || "-"}`);
-    if (order.phone) lines.push(`Phone: ${order.phone}`);
-    if (order.address) lines.push(`Address: ${order.address}`);
-    if (order.city) lines.push(`City: ${order.city}`);
-
     const items = Array.isArray(order.items) ? order.items : [];
-    if (items.length) {
-      lines.push("");
-      lines.push("Products:");
-      for (const it of items) {
-        const name = getProductName(it);
-        const variant = formatVariantDetails(it);
-        const qty = it.quantity ?? 0;
-        const price = formatPrice(it.price);
-        lines.push(`- ${name} (${variant}) x${qty} — MAD ${price}`);
-      }
+    const supplementaryItems = Array.isArray(order.pillowItems) ? order.pillowItems : [];
+    const note = typeof order.note === "string" ? order.note.trim() : "";
+
+    lines.push(`Commande #${order.id ?? "-"}`);
+    lines.push(`Client: ${order.customerName || "-"}`);
+    lines.push(`Tél: ${order.phone || "-"}`);
+    lines.push(`Ville: ${order.city || "-"}`);
+    lines.push(`Adresse: ${order.address || "-"}`);
+    lines.push(`Prix: ${formatPrice(order.totalAmount)} MAD`);
+    lines.push("Produits:");
+
+    for (const it of items) {
+      const name = getProductName(it);
+      const variant = formatVariantDetails(it);
+      const qty = it.quantity ?? 0;
+      lines.push(`- ${qty}x ${name} (${variant})`);
     }
 
-    const note = typeof order.note === "string" ? order.note.trim() : "";
-    if (note) {
-      lines.push("");
-      lines.push(`Note: ${note}`);
+    for (const it of supplementaryItems) {
+      const name = it.pillowName || "Produit supplémentaire";
+      const qty = it.quantity ?? 0;
+      lines.push(`- ${qty}x ${name} (supplimentaire)`);
     }
+
+    if (items.length === 0 && supplementaryItems.length === 0) {
+      lines.push("-");
+    }
+
+    lines.push(`Note: ${note}`);
 
     return lines.join("\n");
   }, []);
@@ -242,6 +252,11 @@ const OrderManagement = () => {
 
   const handleOpenBarcode = useCallback((value: string) => {
     setBarcodeValue(value);
+  }, []);
+
+  const handlePrintOrder = useCallback((order: any) => {
+    setTicketOrder(order);
+    setIsTicketOpen(true);
   }, []);
 
   const handleNavigateAdvanced = useCallback((id: number) => {
@@ -507,6 +522,7 @@ const OrderManagement = () => {
                     onCopyPhone={copyToClipboard}
                     onCopyTracking={copyToClipboard}
                     onOpenBarcode={handleOpenBarcode}
+                    onPrintOrder={handlePrintOrder}
                     onNavigateAdvanced={handleNavigateAdvanced}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
@@ -530,6 +546,12 @@ const OrderManagement = () => {
       </div>
 
       <OrderManagementDialog open={isDialogOpen} onOpenChange={handleDialogClose} order={viewingOrder} />
+      <OrderTicketDialog
+        open={isTicketOpen}
+        onOpenChange={setIsTicketOpen}
+        order={ticketOrder}
+        requireInProcessTracking={false}
+      />
 
       {isAdmin && (
         <DeleteConfirmDialog
@@ -645,6 +667,7 @@ type OrderRowProps = {
   onCopyPhone: (value: string) => void;
   onCopyTracking: (value: string) => void;
   onOpenBarcode: (value: string) => void;
+  onPrintOrder: (order: any) => void;
   onNavigateAdvanced: (id: number) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
@@ -659,6 +682,7 @@ const OrderRow = memo(function OrderRow({
   onCopyPhone,
   onCopyTracking,
   onOpenBarcode,
+  onPrintOrder,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -733,39 +757,50 @@ const OrderRow = memo(function OrderRow({
         MAD {formatPrice(order.totalAmount)}
       </TableCell>
       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Order actions">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onRowClick(order)}>
-              <Eye className="h-4 w-4 mr-2" />
-              View
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
-              <Copy className="h-4 w-4 mr-2" />
-              Copy order info
-            </DropdownMenuItem>
-            {isAdmin && (
-              <>
-                <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Advanced edit
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => onDelete(order)}
-                  className="text-red-600 focus:text-red-600"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Print order ticket"
+            title="Print order ticket"
+            onClick={() => onPrintOrder(order)}
+          >
+            <Printer className="h-4 w-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Order actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onRowClick(order)}>
+                <Eye className="h-4 w-4 mr-2" />
+                View
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copy order info
+              </DropdownMenuItem>
+              {isAdmin && (
+                <>
+                  <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Advanced edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onDelete(order)}
+                    className="text-red-600 focus:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </TableCell>
     </TableRow>
   );
