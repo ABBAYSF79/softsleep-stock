@@ -182,16 +182,6 @@ export const usePaginatedOrders = (
   });
 };
 
-export const useOrderStats = () => {
-  return useQuery({
-    queryKey: ['orders-stats'],
-    queryFn: async () => {
-      const { data } = await api.get('/orders/stats');
-      return data;
-    }
-  });
-};
-
 export const useCreateOrder = () => {
   const queryClient = useQueryClient();
   

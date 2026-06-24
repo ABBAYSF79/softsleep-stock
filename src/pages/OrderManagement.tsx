@@ -20,6 +20,7 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { DeleteConfirmDialog } from "@/components/common/DeleteConfirmDialog";
 import { FloatingActionBar } from "@/components/common/FloatingActionBar";
 import { OrderManagementDialog } from "@/components/orders/OrderManagementDialog";
+import { OrderGuaranteeDialog } from "@/components/orders/OrderGuaranteeDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -46,7 +47,7 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Trash2 } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Trash2 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, startOfDay, startOfMonth, subDays } from "date-fns";
 
@@ -62,6 +63,8 @@ const OrderManagement = () => {
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
   const [isTicketOpen, setIsTicketOpen] = useState(false);
   const [ticketOrder, setTicketOrder] = useState<any>(null);
+  const [isGuaranteeOpen, setIsGuaranteeOpen] = useState(false);
+  const [guaranteeOrder, setGuaranteeOrder] = useState<any>(null);
 
   const [barcodeValue, setBarcodeValue] = useState<string | null>(null);
 
@@ -257,6 +260,11 @@ const OrderManagement = () => {
   const handlePrintOrder = useCallback((order: any) => {
     setTicketOrder(order);
     setIsTicketOpen(true);
+  }, []);
+
+  const handleOpenGuarantee = useCallback((order: any) => {
+    setGuaranteeOrder(order);
+    setIsGuaranteeOpen(true);
   }, []);
 
   const handleNavigateAdvanced = useCallback((id: number) => {
@@ -523,6 +531,7 @@ const OrderManagement = () => {
                     onCopyTracking={copyToClipboard}
                     onOpenBarcode={handleOpenBarcode}
                     onPrintOrder={handlePrintOrder}
+                    onOpenGuarantee={handleOpenGuarantee}
                     onNavigateAdvanced={handleNavigateAdvanced}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
@@ -551,6 +560,11 @@ const OrderManagement = () => {
         onOpenChange={setIsTicketOpen}
         order={ticketOrder}
         requireInProcessTracking={false}
+      />
+      <OrderGuaranteeDialog
+        open={isGuaranteeOpen}
+        onOpenChange={setIsGuaranteeOpen}
+        order={guaranteeOrder}
       />
 
       {isAdmin && (
@@ -668,6 +682,7 @@ type OrderRowProps = {
   onCopyTracking: (value: string) => void;
   onOpenBarcode: (value: string) => void;
   onPrintOrder: (order: any) => void;
+  onOpenGuarantee: (order: any) => void;
   onNavigateAdvanced: (id: number) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
@@ -683,6 +698,7 @@ const OrderRow = memo(function OrderRow({
   onCopyTracking,
   onOpenBarcode,
   onPrintOrder,
+  onOpenGuarantee,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -766,6 +782,15 @@ const OrderRow = memo(function OrderRow({
             onClick={() => onPrintOrder(order)}
           >
             <Printer className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open guarantee document"
+            title="Open guarantee document"
+            onClick={() => onOpenGuarantee(order)}
+          >
+            <BadgeCheck className="h-4 w-4" />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

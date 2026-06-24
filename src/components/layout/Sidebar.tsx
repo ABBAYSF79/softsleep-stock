@@ -14,7 +14,6 @@ import {
   Activity,
   FileText,
   Wallet,
-  Trophy,
   BarChart3,
   UserCheck,
   Users2,
@@ -48,11 +47,6 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       icon: <Package className="h-5 w-5" />,
       path: "/stock",
       adminOnly: true,
-    },
-     {
-      title: "Order",
-      icon: <ShoppingCart className="h-5 w-5" />,
-      path: "/orders",
     },
     {
       title: "Accessoires Orders",
@@ -92,11 +86,6 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       icon: <Wallet className="h-5 w-5" />,
       path: "/finance",
       adminOnly: true,
-    },
-    {
-      title: "Leaderboard",
-      icon: <Trophy className="h-5 w-5" />,
-      path: "/leaderboard",
     },
     {
       title: "Users",

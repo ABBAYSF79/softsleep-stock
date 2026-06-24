@@ -23,7 +23,6 @@ import Activities from "@/pages/Activities";
 import Invoice from "@/pages/Invoice";
 import InvoicesTracking from "@/pages/InvoicesTracking";
 import Finance from "@/pages/Finance";
-import Leaderboard from "@/pages/Leaderboard";
 import ProductOverview from "@/pages/ProductOverview";
 import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
@@ -124,11 +123,6 @@ const App = () => (
             <Route path="/finance" element={
               <ProtectedRoute adminOnly>
                 <Finance />
-              </ProtectedRoute>
-            } />
-            <Route path="/leaderboard" element={
-              <ProtectedRoute>
-                <Leaderboard />
               </ProtectedRoute>
             } />
             <Route path="/settings" element={
