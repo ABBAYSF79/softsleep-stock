@@ -272,6 +272,7 @@ function formatOrderTableDate(iso: string) {
 }
 
 const ProductOverview = () => {
+  const OVERVIEW_FETCH_LIMIT = 200;
   const [dateFilter, setDateFilter] = useState("thisMonth");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -284,7 +285,7 @@ const ProductOverview = () => {
   const [productFilter, setProductFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [compareEnabled, setCompareEnabled] = useState(true);
+  const [compareEnabled, setCompareEnabled] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
 
   const { data: products = [] } = useProducts();
@@ -353,7 +354,7 @@ const ProductOverview = () => {
     const to = dateRange?.to;
     const base: OrderFilters = {
       page: 1,
-      limit: 15000,
+      limit: OVERVIEW_FETCH_LIMIT,
       status: statusFilter,
       startDate: from ? startOfDay(from) : undefined,
       endDate: to ? endOfDay(to) : undefined,
@@ -376,7 +377,7 @@ const ProductOverview = () => {
     const prev = getPreviousPeriodRange(dateRange.from, dateRange.to);
     const base: OrderFilters = {
       page: 1,
-      limit: 15000,
+      limit: OVERVIEW_FETCH_LIMIT,
       status: statusFilter,
       startDate: prev.from,
       endDate: prev.to,
@@ -393,7 +394,7 @@ const ProductOverview = () => {
   } = usePaginatedOrders(
     prevOrderQueryParams ?? {
       page: 1,
-      limit: 15000,
+      limit: OVERVIEW_FETCH_LIMIT,
       status: statusFilter,
     },
     {

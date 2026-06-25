@@ -29,7 +29,15 @@ import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
 import AdvancedEdit from "@/pages/AdvancedEdit";
 import { LayoutDashboard, Package, ShoppingCart, LineChart, UsersIcon } from "lucide-react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

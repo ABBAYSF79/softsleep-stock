@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { useCreateInvoice, useNextInvoiceReference, useOrders } from "@/hooks/us
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useReactToPrint } from "react-to-print";
 import { useRef } from "react";
-import { format } from "date-fns";
+import { endOfDay, format, startOfMonth, subMonths } from "date-fns";
 import { formatPrice, calculateOrderTotal, getProductName, formatVariantDetails } from "@/utils/order-utils";
 import { ChevronDown, ChevronUp, Check, ChevronsUpDown, X } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -34,6 +34,7 @@ const Invoice = () => {
   const [paymentMode, setPaymentMode] = useState("Espèce");
   const [isCompanyInfoOpen, setIsCompanyInfoOpen] = useState(false);
   const [openCombobox, setOpenCombobox] = useState(false);
+  const [dateFilter, setDateFilter] = useState("last3months");
   
   // Client Info State
   const [clientName, setClientName] = useState("");
@@ -41,7 +42,23 @@ const Invoice = () => {
   const [clientAddress, setClientAddress] = useState("");
   const [clientCity, setClientCity] = useState("");
 
-  const { data: orders, isLoading } = useOrders();
+  const invoiceOrderFilters = useMemo(() => {
+    const now = new Date();
+    const endDate = endOfDay(now);
+    const startDate =
+      dateFilter === "thisMonth"
+        ? startOfMonth(now)
+        : subMonths(now, 3);
+
+    return {
+      status: "DELIVERED",
+      limit: 300,
+      startDate,
+      endDate,
+    };
+  }, [dateFilter]);
+
+  const { data: orders = [], isLoading } = useOrders(invoiceOrderFilters);
   const createInvoice = useCreateInvoice();
   const { data: nextReference } = useNextInvoiceReference();
   const invoiceRef = useRef<HTMLDivElement>(null);
@@ -196,6 +213,17 @@ const Invoice = () => {
           <div className="space-y-4">
             <div>
               <Label>Select Orders</Label>
+              <div className="mb-2">
+                <Select value={dateFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Orders period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="thisMonth">This month</SelectItem>
+                    <SelectItem value="last3months">Last 3 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
                 <PopoverTrigger asChild>
                   <Button
@@ -222,7 +250,7 @@ const Invoice = () => {
                     <CommandList>
                       <CommandEmpty>No order found.</CommandEmpty>
                       <CommandGroup>
-                        {orders?.map((order: any) => {
+                        {orders.map((order: any) => {
                           const isSelected = selectedOrders.some(o => o.id === order.id);
                           return (
                             <CommandItem

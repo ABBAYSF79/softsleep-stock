@@ -3,6 +3,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
+const HEAVY_QUERY_OPTIONS = {
+  staleTime: 60 * 1000,
+  gcTime: 5 * 60 * 1000,
+  refetchOnWindowFocus: false as const,
+  refetchOnReconnect: false as const,
+};
+
+const REFERENCE_QUERY_OPTIONS = {
+  staleTime: 5 * 60 * 1000,
+  gcTime: 10 * 60 * 1000,
+  refetchOnWindowFocus: false as const,
+  refetchOnReconnect: false as const,
+};
+
 // Products
 export const useProducts = () => {
   return useQuery({
@@ -87,13 +101,18 @@ export interface OrderFilters {
   endDate?: Date;
 }
 
-export const useOrders = () => {
+export const useOrders = (
+  filters?: OrderFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', filters],
     queryFn: async () => {
-      const { data } = await api.get('/orders');
+      const { data } = await api.get('/orders', { params: filters });
       return data;
-    }
+    },
+    enabled: options?.enabled ?? true,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -134,7 +153,8 @@ export const useInvoices = (searchTerm = '') => {
     queryFn: async () => {
       const { data } = await api.get('/invoices', { params: { search: searchTerm } });
       return data;
-    }
+    },
+    ...REFERENCE_QUERY_OPTIONS,
   });
 };
 
@@ -163,7 +183,11 @@ export const useNextInvoiceReference = () => {
     queryFn: async () => {
       const { data } = await api.get('/invoices/next-reference');
       return data.reference as string;
-    }
+    },
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 };
 
@@ -179,6 +203,7 @@ export const usePaginatedOrders = (
     },
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled ?? true,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -401,6 +426,7 @@ export const usePillowStock = () => {
       return data;
     },
     retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -414,7 +440,8 @@ export const usePillowStockHistory = (pillowId?: number) => {
         timeout: 15000,
       });
       return data;
-    }
+    },
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -433,6 +460,7 @@ export const usePillowStockAnalytics = (params?: { from?: string; to?: string; p
       return data;
     },
     retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -469,6 +497,7 @@ export const usePaginatedPillowStockHistory = (params: {
       return data;
     },
     retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -538,6 +567,7 @@ export const usePillowOrders = () => {
       return data;
     },
     retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -623,6 +653,7 @@ export const usePaginatedPillowOrders = (filters: PillowOrderFilters) => {
       return data;
     },
     placeholderData: (previousData) => previousData,
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -633,7 +664,8 @@ export const useUsers = () => {
     queryFn: async () => {
       const { data } = await api.get('/users');
       return data;
-    }
+    },
+    ...REFERENCE_QUERY_OPTIONS,
   });
 };
 
@@ -697,7 +729,8 @@ export const useStockHistory = () => {
     queryFn: async () => {
       const { data } = await api.get('/stock/history');
       return data;
-    }
+    },
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -708,7 +741,8 @@ export const useDashboard = () => {
     queryFn: async () => {
       const { data } = await api.get('/dashboard/stats');
       return data;
-    }
+    },
+    ...HEAVY_QUERY_OPTIONS,
   });
 };
 
@@ -719,7 +753,8 @@ export const useDeliveryServices = () => {
     queryFn: async () => {
       const { data } = await api.get('/delivery');
       return data;
-    }
+    },
+    ...REFERENCE_QUERY_OPTIONS,
   });
 };
 

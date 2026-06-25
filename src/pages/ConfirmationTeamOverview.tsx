@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,16 +70,38 @@ const getStatusBadge = (status: string) => {
 };
 
 const ConfirmationTeamOverview = () => {
-  const { data: users, isLoading: isLoadingUsers } = useUsers();
-  const { data: orders, isLoading: isLoadingOrders } = useOrders();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: startOfMonth(today),
+      to: endOfDay(endOfMonth(today)),
+    };
+  });
+  const [dateFilter, setDateFilter] = useState<string>("thisMonth");
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [userFilter, setUserFilter] = useState<string>("ALL");
   const [confirmationUserFilter, setConfirmationUserFilter] = useState<string>("ALL");
   const [productFilter, setProductFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateFilter, setDateFilter] = useState<string>("custom");
+
+  const orderFilters = useMemo(() => ({
+    limit: 300,
+    ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
+    ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+    ...(userFilter !== "ALL" ? { salesmanId: userFilter } : {}),
+    ...(confirmationUserFilter !== "ALL" ? { confirmationUserId: confirmationUserFilter } : {}),
+    ...(productFilter !== "ALL" ? { productId: productFilter } : {}),
+    ...(dateRange?.from && dateRange?.to
+      ? {
+          startDate: startOfDay(dateRange.from),
+          endDate: endOfDay(dateRange.to),
+        }
+      : {}),
+  }), [confirmationUserFilter, dateRange, productFilter, searchTerm, statusFilter, userFilter]);
+
+  const { data: users, isLoading: isLoadingUsers } = useUsers();
+  const { data: orders, isLoading: isLoadingOrders } = useOrders(orderFilters);
   const itemsPerPage = 10;
   const { user } = useAuth();
 
@@ -102,36 +124,7 @@ const ConfirmationTeamOverview = () => {
   });
 
   // Filter orders based on search term, date range, status, user, and confirmation user
-  const filteredOrders = orders?.filter(order => {
-    const matchesSearch = 
-      order.id.toString().includes(searchTerm) ||
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.confirmationUser?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const orderDate = new Date(order.createdAt);
-    orderDate.setHours(0, 0, 0, 0); // Reset time part to compare only dates
-    
-    const matchesDate = !dateRange?.from || !dateRange?.to || 
-      (orderDate >= new Date(dateRange.from.setHours(0, 0, 0, 0)) && 
-       orderDate <= new Date(dateRange.to.setHours(23, 59, 59, 999)));
-    
-    const matchesStatus = statusFilter === "ALL" || order.status === statusFilter;
-    
-    const matchesUser = userFilter === "ALL" || order.user?.id?.toString() === userFilter;
-    
-    const matchesConfirmationUser = confirmationUserFilter === "ALL" || 
-      order.confirmationUser?.id?.toString() === confirmationUserFilter;
-
-    const orderItems = Array.isArray(order?.items) ? order.items : Array.isArray(order?.orderItems) ? order.orderItems : [];
-    const matchesProduct =
-      productFilter === "ALL" ||
-      orderItems.some((item: any) => {
-        const pid = item?.productId ?? item?.variant?.productId ?? item?.product?.id ?? item?.variant?.product?.id;
-        return pid?.toString?.() === productFilter;
-      });
-    
-    return matchesSearch && matchesDate && matchesStatus && matchesUser && matchesConfirmationUser && matchesProduct;
-  }) || [];
+  const filteredOrders = orders || [];
 
   const productOptions = (() => {
     const map = new Map<string, string>();
@@ -218,7 +211,7 @@ const ConfirmationTeamOverview = () => {
   };
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / itemsPerPage));
   const paginatedOrders = filteredOrders.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage

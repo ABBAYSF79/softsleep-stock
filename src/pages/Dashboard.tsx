@@ -44,6 +44,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.products || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">All products</p>
               </CardContent>
             </Card>
             <Card>
@@ -53,11 +54,12 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.users || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">All users</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">Revenue This Month</CardTitle>
                 <DollarSign className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
@@ -68,7 +70,7 @@ const Dashboard = () => {
         )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <CardTitle className="text-sm font-medium">Orders This Month</CardTitle>
             <ShoppingCart className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
@@ -77,7 +79,7 @@ const Dashboard = () => {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Commission</CardTitle>
+            <CardTitle className="text-sm font-medium">Commission This Month</CardTitle>
             <CircleDollarSign className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
@@ -89,7 +91,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>{isAdmin ? 'Sales & Commission Overview' : 'Commission Overview'}</CardTitle>
+            <CardTitle>{isAdmin ? 'Last 4 Months: Sales & Commission' : 'Last 4 Months: Commission'}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">

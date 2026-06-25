@@ -6,6 +6,11 @@ import { authMiddleware } from '../middleware/auth';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const DEFAULT_UNPAGINATED_DAYS = 90;
+const DEFAULT_UNPAGINATED_LIMIT = 300;
+const DEFAULT_PAGINATED_LIMIT = 25;
+const MAX_PAGINATED_LIMIT = 200;
+
 /** Express can expose duplicate keys as string[]; normalize to a single trimmed string. */
 function firstQueryString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
@@ -166,6 +171,7 @@ router.get('/', authMiddleware, async (req, res) => {
       status, 
       search, 
       salesman, 
+      confirmationUserId,
       productId,
       startDate, 
       endDate,
@@ -174,6 +180,8 @@ router.get('/', authMiddleware, async (req, res) => {
 
     const where: any = req.user?.role === 'ADMIN' ? {} : { userId: req.user?.id };
     const isAdmin = req.user?.role === 'ADMIN';
+    const hasPagination = typeof page !== 'undefined';
+    const hasExplicitDateFilter = Boolean(dateFilter || (startDate && endDate));
 
     // Apply filters
     if (status && status !== 'all') {
@@ -188,6 +196,8 @@ router.get('/', authMiddleware, async (req, res) => {
         { city: { contains: searchStr } },
         { address: { contains: searchStr } },
         { deliveryService: { name: { contains: searchStr } } },
+        { user: { name: { contains: searchStr } } },
+        { confirmationUser: { name: { contains: searchStr } } },
         { trackingCode: { contains: searchStr } },
         // For ID search, we need to check if it's a valid number
         ...(isNaN(Number(searchStr)) ? [] : [{ id: Number(searchStr) }])
@@ -201,6 +211,11 @@ router.get('/', authMiddleware, async (req, res) => {
       where.user = {
         name: salesman.toString()
       };
+    }
+
+    const confirmationUserIdParam = parsePositiveInt(firstQueryString(confirmationUserId));
+    if (confirmationUserIdParam !== null) {
+      where.confirmationUserId = confirmationUserIdParam;
     }
 
     await applyDeliveryServiceFilter(where, req.query);
@@ -235,17 +250,32 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     }
 
+    if (!hasPagination && !hasExplicitDateFilter) {
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - DEFAULT_UNPAGINATED_DAYS);
+      where.createdAt = { gte: recentDate };
+    }
+
     // Pagination
-    const pageNum = page ? parseInt(page.toString()) : 1;
-    const limitNum = limit ? parseInt(limit.toString()) : 2000;
+    const requestedPage = page ? parseInt(page.toString(), 10) : 1;
+    const pageNum = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const requestedLimit = limit ? parseInt(limit.toString(), 10) : undefined;
+    const fallbackLimit = hasPagination ? DEFAULT_PAGINATED_LIMIT : DEFAULT_UNPAGINATED_LIMIT;
+    const safeRequestedLimit =
+      requestedLimit && Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? requestedLimit
+        : fallbackLimit;
+    const limitNum = hasPagination
+      ? Math.min(safeRequestedLimit, MAX_PAGINATED_LIMIT)
+      : Math.min(safeRequestedLimit, DEFAULT_UNPAGINATED_LIMIT);
     const skip = (pageNum - 1) * limitNum;
 
-    // Get total count for pagination metadata
-    const total = await prisma.order.count({ where });
+    // Only compute counts for paginated responses to avoid extra DB load
+    const total = hasPagination ? await prisma.order.count({ where }) : 0;
 
     const orders = await prisma.order.findMany({
       where,
-      skip: page ? skip : 0,
+      skip: hasPagination ? skip : 0,
       take: limitNum,
       include: {
         user: {
@@ -345,7 +375,7 @@ router.get('/', authMiddleware, async (req, res) => {
     });
     
     // Return paginated response if page is provided
-    if (page) {
+    if (hasPagination) {
       res.json({
         data: formattedOrders,
         meta: {

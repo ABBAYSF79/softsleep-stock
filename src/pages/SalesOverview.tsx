@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,14 +35,12 @@ import {
   BarChart,
   Bar
 } from 'recharts';
-import { Search, Calendar, Download, Eye, DollarSign, ShoppingCart, TrendingUp, Package } from "lucide-react";
+import { Search, Download, DollarSign, ShoppingCart, TrendingUp, Package } from "lucide-react";
 import { useDeliveryServices, useOrders, useUsers } from "@/hooks/useApi";
-import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, startOfDay, endOfDay } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
-import { OrderDialog } from "@/components/orders/OrderDialog";
-import { useAuth } from "@/contexts/AuthContext";
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -60,46 +58,44 @@ const getStatusBadge = (status: string) => {
 };
 
 const SalesOverview = () => {
-  const { data: orders, isLoading } = useOrders();
-  const { data: users, isLoading: isLoadingUsers } = useUsers();
-  const { data: deliveryServices, isLoading: isLoadingDeliveryServices } = useDeliveryServices();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: startOfMonth(today),
+      to: endOfDay(endOfMonth(today)),
+    };
+  });
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [userFilter, setUserFilter] = useState<string>("ALL");
   const [deliveryServiceFilter, setDeliveryServiceFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateFilter, setDateFilter] = useState<string>("custom");
+  const [dateFilter, setDateFilter] = useState<string>("thisMonth");
   const itemsPerPage = 10;
-  const { user } = useAuth();
+
+  const orderFilters = useMemo(() => ({
+    limit: 300,
+    ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
+    ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+    ...(userFilter !== "ALL" ? { salesmanId: userFilter } : {}),
+    ...(deliveryServiceFilter !== "ALL" ? { deliveryServiceId: deliveryServiceFilter } : {}),
+    ...(dateRange?.from && dateRange?.to
+      ? {
+          startDate: startOfDay(dateRange.from),
+          endDate: endOfDay(dateRange.to),
+        }
+      : {}),
+  }), [dateRange, deliveryServiceFilter, searchTerm, statusFilter, userFilter]);
+
+  const { data: orders = [], isLoading } = useOrders(orderFilters);
+  const { data: users, isLoading: isLoadingUsers } = useUsers();
+  const { data: deliveryServices, isLoading: isLoadingDeliveryServices } = useDeliveryServices();
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, dateRange, statusFilter, userFilter, deliveryServiceFilter, dateFilter]);
 
-  // Filter orders based on search term, date range, status, and user
-  const filteredOrders = orders?.filter(order => {
-    const matchesSearch = 
-      order.id.toString().includes(searchTerm) ||
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const orderDate = new Date(order.createdAt);
-    orderDate.setHours(0, 0, 0, 0); // Reset time part to compare only dates
-    
-    const matchesDate = !dateRange?.from || !dateRange?.to || 
-      (orderDate >= new Date(dateRange.from.setHours(0, 0, 0, 0)) && 
-       orderDate <= new Date(dateRange.to.setHours(23, 59, 59, 999)));
-    
-    const matchesStatus = statusFilter === "ALL" || order.status === statusFilter;
-    
-    const matchesUser = userFilter === "ALL" || order.salesman?.id?.toString() === userFilter;
-
-    const matchesDeliveryService =
-      deliveryServiceFilter === "ALL" ||
-      order.deliveryService?.id?.toString() === deliveryServiceFilter;
-    
-    return matchesSearch && matchesDate && matchesStatus && matchesUser && matchesDeliveryService;
-  }) || [];
+  const filteredOrders = orders || [];
 
   // Handle date filter changes
   const handleDateFilterChange = (value: string) => {
@@ -148,7 +144,7 @@ const SalesOverview = () => {
   };
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / itemsPerPage));
   const paginatedOrders = filteredOrders.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
@@ -176,7 +172,7 @@ const SalesOverview = () => {
   );
 
   const handleExport = () => {
-    if (!filteredOrders?.length) return;
+    if (!filteredOrders.length) return;
 
     // Prepare CSV content
     const headers = [

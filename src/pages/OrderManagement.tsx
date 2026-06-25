@@ -49,7 +49,7 @@ import Barcode from "react-barcode";
 import { toast } from "sonner";
 import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Trash2 } from "lucide-react";
 import { DateRange } from "react-day-picker";
-import { endOfDay, endOfMonth, startOfDay, startOfMonth, subDays } from "date-fns";
+import { endOfDay, endOfMonth, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 
 const OrderManagement = () => {
   const navigate = useNavigate();
@@ -76,7 +76,7 @@ const OrderManagement = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [salesmanIdFilter, setSalesmanIdFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("last3months");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
 
   const debouncedSearch = useDebounce(searchQuery, 150);
@@ -112,6 +112,12 @@ const OrderManagement = () => {
       return { startDate: from.toISOString(), endDate: to.toISOString() };
     }
 
+    if (dateFilter === "last3months") {
+      const from = startOfDay(subMonths(now, 3));
+      const to = endOfDay(now);
+      return { startDate: from.toISOString(), endDate: to.toISOString() };
+    }
+
     if (dateFilter === "thisMonth") {
       const from = startOfMonth(now);
       const to = endOfDay(endOfMonth(now));
@@ -126,7 +132,7 @@ const OrderManagement = () => {
     if (searchQuery.trim()) count += 1;
     if (statusFilter !== "all") count += 1;
     if (isAdmin && salesmanIdFilter !== "all") count += 1;
-    if (dateFilter !== "all") count += 1;
+    if (dateFilter !== "last3months") count += 1;
     return count;
   }, [searchQuery, statusFilter, isAdmin, salesmanIdFilter, dateFilter]);
 
@@ -134,7 +140,7 @@ const OrderManagement = () => {
     setSearchQuery("");
     setStatusFilter("all");
     setSalesmanIdFilter("all");
-    setDateFilter("all");
+    setDateFilter("last3months");
     setCustomDateRange(undefined);
   };
 
@@ -465,6 +471,7 @@ const OrderManagement = () => {
                     <SelectValue placeholder="All time" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="last3months">Last 3 months</SelectItem>
                     <SelectItem value="all">All time</SelectItem>
                     <SelectItem value="today">Today</SelectItem>
                     <SelectItem value="yesterday">Yesterday</SelectItem>

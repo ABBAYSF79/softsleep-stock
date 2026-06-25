@@ -1,7 +1,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth';
-import { subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -10,81 +10,105 @@ router.get('/stats', authMiddleware, async (req, res) => {
   try {
     const isAdmin = req.user?.role === 'ADMIN';
     const where = isAdmin ? {} : { userId: req.user?.id };
-    
-    // Get counts
-    const [productCount, userCount, orderCount] = await Promise.all([
+
+    const now = new Date();
+    const currentMonthStart = startOfMonth(now);
+    const currentMonthEnd = endOfMonth(now);
+    const currentMonthWhere = {
+      ...where,
+      createdAt: {
+        gte: currentMonthStart,
+        lte: currentMonthEnd,
+      },
+    };
+    const deliveredCurrentMonthWhere = {
+      ...currentMonthWhere,
+      status: 'DELIVERED' as const,
+    };
+
+    const [productCount, userCount, orderCount, deliveredSummary, recentOrders] = await Promise.all([
       isAdmin ? prisma.product.count() : Promise.resolve(0),
       isAdmin ? prisma.user.count() : Promise.resolve(0),
-      prisma.order.count({ where })
+      prisma.order.count({ where: currentMonthWhere }),
+      prisma.order.aggregate({
+        where: deliveredCurrentMonthWhere,
+        _sum: {
+          totalAmount: true,
+          commission: true,
+        },
+      }),
+      prisma.order.findMany({
+        where,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          customerName: true,
+          totalAmount: true,
+          commission: true,
+          createdAt: true,
+        },
+      }),
     ]);
-    
-    // Get revenue and commission data
-    const orders = await prisma.order.findMany({
-      where: {
-        ...where,
-        status: 'DELIVERED'
-      }
+
+    const totalRevenue = isAdmin
+      ? Number(deliveredSummary._sum.totalAmount ?? 0)
+      : 0;
+    const totalCommission = Number(deliveredSummary._sum.commission ?? 0);
+
+    // Keep chart lightweight: last 4 months using aggregates only.
+    const monthRanges = Array.from({ length: 4 }, (_, idx) => {
+      const monthDate = subMonths(now, 3 - idx);
+      return {
+        start: startOfMonth(monthDate),
+        end: endOfMonth(monthDate),
+      };
     });
-    
-    const totalRevenue = isAdmin ? orders.reduce((sum, order) => sum + Number(order.totalAmount), 0) : 0;
-    const totalCommission = orders.reduce((sum, order) => sum + Number(order.commission), 0);
-    
-    // Get recent orders
-    const recentOrders = await prisma.order.findMany({
-      where,
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        orderItems: {
-          include: {
-            variant: {
-              include: {
-                product: true
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    // Get sales data for chart (last 7 months)
-    const salesData = [];
-    for (let i = 6; i >= 0; i--) {
-      const start = startOfMonth(subDays(new Date(), i * 30));
-      const end = endOfMonth(subDays(new Date(), i * 30));
-      
-      const monthOrders = await prisma.order.findMany({
-        where: {
-          ...where,
-          createdAt: {
-            gte: start,
-            lte: end
+
+    const monthlySummaries = await Promise.all(
+      monthRanges.map(({ start, end }) =>
+        prisma.order.aggregate({
+          where: {
+            ...where,
+            createdAt: {
+              gte: start,
+              lte: end,
+            },
+            status: 'DELIVERED',
           },
-          status: 'DELIVERED'
-        }
-      });
-      
-      const monthRevenue = isAdmin ? monthOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0) : 0;
-      const monthCommission = monthOrders.reduce((sum, order) => sum + Number(order.commission), 0);
-      
-      salesData.push({
+          _sum: {
+            totalAmount: true,
+            commission: true,
+          },
+        })
+      )
+    );
+
+    const salesData = monthRanges.map(({ start }, idx) => {
+      const summary = monthlySummaries[idx];
+      return {
         name: start.toLocaleString('default', { month: 'short' }),
-        sales: monthRevenue,
-        commission: monthCommission
-      });
-    }
-    
+        sales: isAdmin ? Number(summary?._sum.totalAmount ?? 0) : 0,
+        commission: Number(summary?._sum.commission ?? 0),
+      };
+    });
+
     res.json({
       stats: {
         products: productCount,
         users: userCount,
         orders: orderCount,
         revenue: totalRevenue,
-        commission: totalCommission
+        commission: totalCommission,
       },
       recentOrders,
       salesData,
-      isAdmin
+      isAdmin,
+      period: {
+        type: 'thisMonth',
+        from: currentMonthStart,
+        to: currentMonthEnd,
+      },
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);

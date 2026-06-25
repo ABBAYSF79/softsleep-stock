@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,33 +57,79 @@ export default function Finance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
   const [deliveryServiceFilter, setDeliveryServiceFilter] = useState<string>("ALL");
+  const [dateRange, setDateRange] = useState<any>(() => {
+    const today = new Date();
+    return {
+      from: startOfMonth(today),
+      to: endOfDay(endOfMonth(today)),
+    };
+  });
+  const [dateFilter, setDateFilter] = useState<string>("thisMonth");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const { data: orders, isLoading } = useOrders();
+
+  const orderFilters = useMemo(() => ({
+    limit: 300,
+    status: "DELIVERED",
+    ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
+    ...(deliveryServiceFilter !== "ALL"
+      ? { deliveryServiceName: deliveryServiceFilter }
+      : {}),
+    ...(dateRange?.from && dateRange?.to
+      ? {
+          startDate: startOfDay(dateRange.from),
+          endDate: endOfDay(dateRange.to),
+        }
+      : {}),
+  }), [dateRange, deliveryServiceFilter, searchTerm]);
+
+  const { data: orders = [], isLoading } = useOrders(orderFilters);
   const updatePaymentStatus = useUpdateOrderPaymentStatus();
   const { user } = useAuth();
 
+  const handleDateFilterChange = (value: string) => {
+    setDateFilter(value);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (value) {
+      case "today":
+        setDateRange({
+          from: today,
+          to: new Date(today.setHours(23, 59, 59, 999)),
+        });
+        break;
+      case "lastMonth":
+        setDateRange({
+          from: startOfDay(subMonths(today, 1)),
+          to: endOfDay(today),
+        });
+        break;
+      case "thisMonth":
+        setDateRange({
+          from: startOfMonth(today),
+          to: new Date(endOfMonth(today).setHours(23, 59, 59, 999)),
+        });
+        break;
+      case "custom":
+        setDateRange(undefined);
+        break;
+      default:
+        break;
+    }
+  };
+
   // Filter orders based on search term, payment status, and delivery service
-  const filteredOrders = orders?.filter(order => {
-    const matchesSearch = 
-      order.id.toString().includes(searchTerm) ||
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    
+  const filteredOrders = orders.filter(order => {
     const matchesPayment = paymentFilter === "ALL" || 
       (paymentFilter === "PAID" && order.isPaid) || 
       (paymentFilter === "UNPAID" && !order.isPaid);
-    
-    const matchesDeliveryService = deliveryServiceFilter === "ALL" || 
-      order.deliveryService?.name === deliveryServiceFilter;
-    
-    // Only show delivered orders
-    const isDelivered = order.status === "DELIVERED";
-    
-    return matchesSearch && matchesPayment && matchesDeliveryService && isDelivered;
-  }) || [];
+
+    return matchesPayment;
+  });
 
   // Get unique delivery services
-  const uniqueDeliveryServices = Array.from(new Set(orders?.map(order => order.deliveryService?.name).filter(Boolean) || []));
+  const uniqueDeliveryServices = Array.from(new Set(orders.map(order => order.deliveryService?.name).filter(Boolean)));
 
   // Calculate finance metrics
   const totalRevenue = filteredOrders?.reduce((sum, order) => sum + Number(order.totalAmount), 0) || 0;
@@ -213,6 +259,17 @@ export default function Finance() {
               />
             </div>
           </div>
+          <Select value={dateFilter} onValueChange={handleDateFilterChange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Date Range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="lastMonth">Last 30 Days</SelectItem>
+              <SelectItem value="thisMonth">This Month</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
           <Select 
             value={paymentFilter} 
             onValueChange={(value: "ALL" | "PAID" | "UNPAID") => setPaymentFilter(value)}
@@ -240,6 +297,11 @@ export default function Finance() {
               ))}
             </SelectContent>
           </Select>
+          {dateFilter === "custom" && (
+            <div className="min-w-[280px]">
+              <DateRangePicker value={dateRange} onChange={setDateRange} />
+            </div>
+          )}
         </div>
 
         {/* Orders Table */}
