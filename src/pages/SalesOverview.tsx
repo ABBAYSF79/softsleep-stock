@@ -74,7 +74,6 @@ const SalesOverview = () => {
   const itemsPerPage = 10;
 
   const orderFilters = useMemo(() => ({
-    limit: 300,
     ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
     ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
     ...(userFilter !== "ALL" ? { salesmanId: userFilter } : {}),

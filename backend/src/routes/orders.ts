@@ -260,22 +260,26 @@ router.get('/', authMiddleware, async (req, res) => {
     const requestedPage = page ? parseInt(page.toString(), 10) : 1;
     const pageNum = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const requestedLimit = limit ? parseInt(limit.toString(), 10) : undefined;
-    const fallbackLimit = hasPagination ? DEFAULT_PAGINATED_LIMIT : DEFAULT_UNPAGINATED_LIMIT;
-    const safeRequestedLimit =
+    const hasExplicitLimit = Boolean(
       requestedLimit && Number.isFinite(requestedLimit) && requestedLimit > 0
-        ? requestedLimit
-        : fallbackLimit;
+    );
+    const fallbackLimit = hasPagination ? DEFAULT_PAGINATED_LIMIT : DEFAULT_UNPAGINATED_LIMIT;
+    const safeRequestedLimit = hasExplicitLimit ? requestedLimit! : fallbackLimit;
     const limitNum = hasPagination
       ? Math.min(safeRequestedLimit, MAX_PAGINATED_LIMIT)
-      : Math.min(safeRequestedLimit, DEFAULT_UNPAGINATED_LIMIT);
-    const skip = (pageNum - 1) * limitNum;
+      : hasExplicitLimit
+        ? Math.min(safeRequestedLimit, DEFAULT_UNPAGINATED_LIMIT)
+        : hasExplicitDateFilter
+          ? undefined
+          : DEFAULT_UNPAGINATED_LIMIT;
+    const skip = hasPagination ? (pageNum - 1) * limitNum : 0;
 
     // Only compute counts for paginated responses to avoid extra DB load
     const total = hasPagination ? await prisma.order.count({ where }) : 0;
 
     const orders = await prisma.order.findMany({
       where,
-      skip: hasPagination ? skip : 0,
+      skip,
       take: limitNum,
       include: {
         user: {

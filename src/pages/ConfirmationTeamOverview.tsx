@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,10 +84,10 @@ const ConfirmationTeamOverview = () => {
   const [confirmationUserFilter, setConfirmationUserFilter] = useState<string>("ALL");
   const [productFilter, setProductFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const orderFilters = useMemo(() => ({
-    limit: 300,
-    ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
+    ...(deferredSearchTerm.trim() ? { search: deferredSearchTerm.trim() } : {}),
     ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
     ...(userFilter !== "ALL" ? { salesmanId: userFilter } : {}),
     ...(confirmationUserFilter !== "ALL" ? { confirmationUserId: confirmationUserFilter } : {}),
@@ -98,7 +98,7 @@ const ConfirmationTeamOverview = () => {
           endDate: endOfDay(dateRange.to),
         }
       : {}),
-  }), [confirmationUserFilter, dateRange, productFilter, searchTerm, statusFilter, userFilter]);
+  }), [confirmationUserFilter, dateRange, deferredSearchTerm, productFilter, statusFilter, userFilter]);
 
   const { data: users, isLoading: isLoadingUsers } = useUsers();
   const { data: orders, isLoading: isLoadingOrders } = useOrders(orderFilters);
@@ -106,8 +106,8 @@ const ConfirmationTeamOverview = () => {
   const { user } = useAuth();
 
   // Fetch confirmation users
-  const { data: confirmationUsers = [], isLoading } = useQuery<ConfirmationUser[]>({
-    queryKey: ["confirmationUsers"],
+  const { data: confirmationUsers = [], isLoading: isLoadingConfirmationUsers } = useQuery<ConfirmationUser[]>({
+    queryKey: ["confirmationUsers", user?.id, user?.role],
     queryFn: async () => {
       const response = await api.get(
         user?.role === "ADMIN" 
@@ -120,15 +120,20 @@ const ConfirmationTeamOverview = () => {
         }
       );
       return response.data || [];
-    }
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   // Filter orders based on search term, date range, status, user, and confirmation user
   const filteredOrders = orders || [];
 
-  const productOptions = (() => {
+  const productOptions = useMemo(() => {
     const map = new Map<string, string>();
-    (orders || []).forEach((order: any) => {
+    filteredOrders.forEach((order: any) => {
       const items = Array.isArray(order?.items) ? order.items : Array.isArray(order?.orderItems) ? order.orderItems : [];
       items.forEach((item: any) => {
         const pid = item?.productId ?? item?.variant?.productId ?? item?.product?.id ?? item?.variant?.product?.id;
@@ -139,24 +144,38 @@ const ConfirmationTeamOverview = () => {
     return Array.from(map.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  })();
+  }, [filteredOrders]);
 
-  // Get confirmation users for selected user from orders
-  const getConfirmationUsersForUser = (userId: string) => {
-    if (userId === "ALL") return [];
-    const userOrders = orders?.filter(order => order.user?.id?.toString() === userId) || [];
-    const confirmationUserIds = new Set();
-    const uniqueConfirmationUsers: ConfirmationUser[] = [];
-    
-    userOrders.forEach(order => {
-      if (order.confirmationUser && !confirmationUserIds.has(order.confirmationUser.id)) {
-        confirmationUserIds.add(order.confirmationUser.id);
-        uniqueConfirmationUsers.push(order.confirmationUser);
-      }
-    });
-    
-    return uniqueConfirmationUsers;
-  };
+  const confirmationUserOptions = useMemo(() => {
+    const selectedSalesUserId = userFilter === "ALL" ? null : Number(userFilter);
+
+    return confirmationUsers
+      .filter((confirmationUser) => {
+        if (selectedSalesUserId === null) {
+          return true;
+        }
+
+        return (
+          confirmationUser.salesman?.id === selectedSalesUserId ||
+          confirmationUser.linkedSalesUserId === selectedSalesUserId ||
+          confirmationUser.linkedSalesUser?.id === selectedSalesUserId
+        );
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [confirmationUsers, userFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateFilter, dateRange, deferredSearchTerm, productFilter, statusFilter, userFilter, confirmationUserFilter]);
+
+  useEffect(() => {
+    if (
+      confirmationUserFilter !== "ALL" &&
+      !confirmationUserOptions.some((confirmationUser) => confirmationUser.id.toString() === confirmationUserFilter)
+    ) {
+      setConfirmationUserFilter("ALL");
+    }
+  }, [confirmationUserFilter, confirmationUserOptions]);
 
   // Handle date filter changes
   const handleDateFilterChange = (value: string) => {
@@ -271,7 +290,7 @@ const ConfirmationTeamOverview = () => {
     document.body.removeChild(link);
   };
 
-  if (isLoading || isLoadingUsers || isLoadingOrders) {
+  if (isLoadingConfirmationUsers || isLoadingUsers || isLoadingOrders) {
     return <MainLayout><div>Loading...</div></MainLayout>;
   }
 
@@ -356,13 +375,17 @@ const ConfirmationTeamOverview = () => {
               ))}
             </SelectContent>
           </Select>
-          <Select value={confirmationUserFilter} onValueChange={setConfirmationUserFilter}>
+          <Select
+            value={confirmationUserFilter}
+            onValueChange={setConfirmationUserFilter}
+            disabled={isLoadingConfirmationUsers || confirmationUserOptions.length === 0}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Filter by confirmation user" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Confirmation Users</SelectItem>
-              {getConfirmationUsersForUser(userFilter).map((confirmationUser) => (
+              {confirmationUserOptions.map((confirmationUser) => (
                 <SelectItem key={confirmationUser.id} value={confirmationUser.id.toString()}>
                   {confirmationUser.name}
                 </SelectItem>
