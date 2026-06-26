@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const HEAVY_QUERY_OPTIONS = {
   staleTime: 60 * 1000,
@@ -96,9 +97,10 @@ export interface OrderFilters {
   /** Substring / name match (sent with id for redundancy in production) */
   deliveryServiceName?: string;
   productId?: string;
+  confirmationUserId?: string | number;
   dateFilter?: string;
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: Date | string;
+  endDate?: Date | string;
 }
 
 export const useOrders = (
@@ -112,7 +114,24 @@ export const useOrders = (
       return data;
     },
     enabled: options?.enabled ?? true,
+    placeholderData: (previousData) => previousData,
     ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useConfirmationUsers = (options?: { enabled?: boolean }) => {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['confirmationUsers', user?.id, user?.role],
+    queryFn: async () => {
+      const path =
+        user?.role === 'ADMIN' ? '/confirmation-users' : '/confirmation-users/my-team';
+      const { data } = await api.get(path);
+      return data ?? [];
+    },
+    enabled: !!user && (options?.enabled ?? true),
+    ...REFERENCE_QUERY_OPTIONS,
   });
 };
 
