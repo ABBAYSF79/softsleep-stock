@@ -128,6 +128,12 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       path: "/confirmation-team-overview",
       adminOnly: false
     },
+    {
+      title: "Team Overview 2",
+      icon: <BarChart3 className="h-5 w-5" />,
+      path: "/team-overview-2",
+      adminOnly: false
+    },
   ];
 
   return (
@@ -147,20 +153,29 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       </div>
 
       <div className="flex flex-col flex-1 py-4 overflow-y-auto">
-        {menuItems.filter(item => !item.adminOnly || user?.role === 'ADMIN').map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={cn(
-              "flex items-center gap-4 px-4 py-3 hover:bg-gray-100",
-              location.pathname === item.path && "bg-matles-50 text-matles-700 font-medium border-l-4 border-matles-600",
-              collapsed && "justify-center"
-            )}
-          >
-            {item.icon}
-            {!collapsed && <span>{item.title}</span>}
-          </Link>
-        ))}
+        {menuItems.filter(item => !item.adminOnly || user?.role === 'ADMIN').map((item) => {
+          const isActive = location.pathname === item.path;
+          const isOrderManagement = item.path === "/orders-management";
+
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={cn(
+                "flex items-center gap-4 px-4 py-3 transition-all duration-200",
+                !isOrderManagement && "hover:bg-gray-100",
+                !isOrderManagement && isActive && "bg-matles-50 text-matles-700 font-medium border-l-4 border-matles-600",
+                isOrderManagement &&
+                  "mx-2 rounded-lg border border-matles-100 bg-matles-50/60 text-matles-800 hover:bg-matles-100/70 hover:shadow-sm",
+                isOrderManagement && isActive && "border-matles-400 bg-matles-100 text-matles-900 font-semibold shadow-sm",
+                collapsed && "justify-center"
+              )}
+            >
+              {item.icon}
+              {!collapsed && <span>{item.title}</span>}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

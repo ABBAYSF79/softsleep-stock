@@ -204,19 +204,24 @@ export const OrderTicket = forwardRef<HTMLDivElement, OrderTicketProps>(({ order
         {/* FOOTER */}
         <div className="text-center mt-auto pt-2 border-t-2 border-black">
           {order.status === "IN_PROCESS" && order.trackingCode && (
-            <div className="w-full flex flex-col items-center justify-center gap-1.5 pb-2">
-              <div className="text-[8px] font-bold uppercase tracking-widest">Tracking Code</div>
-              <div className="bg-white px-2 py-1.5 border-2 border-black rounded-md shadow-sm">
+            <div className="w-full flex flex-col items-center justify-center gap-2 pb-2">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-black">
+                Code de suivi
+              </div>
+              <div className="bg-white px-4 py-2.5 border-2 border-black rounded-md shadow-sm flex flex-col items-center gap-2">
+                <span className="text-[16px] font-black font-mono tracking-[0.1em] text-black leading-none">
+                  {order.trackingCode}
+                </span>
                 <Barcode
                   value={order.trackingCode}
-                  width={1.5}
-                  height={48}
-                  fontSize={10}
+                  width={1.8}
+                  height={52}
+                  fontSize={14}
                   font="Arial"
                   fontOptions="bold"
-                  textMargin={4}
+                  textMargin={0}
                   margin={0}
-                  displayValue={true}
+                  displayValue={false}
                 />
               </div>
             </div>

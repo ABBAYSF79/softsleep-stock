@@ -26,6 +26,7 @@ import Finance from "@/pages/Finance";
 import ProductOverview from "@/pages/ProductOverview";
 import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
+import TeamOverview2 from "@/pages/TeamOverview2";
 import AdvancedEdit from "@/pages/AdvancedEdit";
 import { LayoutDashboard, Package, ShoppingCart, LineChart, UsersIcon } from "lucide-react";
 
@@ -146,6 +147,11 @@ const App = () => (
             <Route path="/confirmation-team-overview" element={
               <ProtectedRoute>
                 <ConfirmationTeamOverview />
+              </ProtectedRoute>
+            } />
+            <Route path="/team-overview-2" element={
+              <ProtectedRoute>
+                <TeamOverview2 />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
