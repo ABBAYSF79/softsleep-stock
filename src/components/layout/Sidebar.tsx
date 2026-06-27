@@ -70,6 +70,24 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       path: "/product-overview",
     },
     {
+      title: "Confirmation Team",
+      icon: <UserCheck className="h-5 w-5" />,
+      path: "/confirmation-team",
+      adminOnly: false
+    },
+    {
+      title: "Confirmation Overview",
+      icon: <Users2 className="h-5 w-5" />,
+      path: "/confirmation-team-overview",
+      adminOnly: false
+    },
+    {
+      title: "Team Overview 2",
+      icon: <BarChart3 className="h-5 w-5" />,
+      path: "/team-overview-2",
+      adminOnly: false
+    },
+    {
       title: "Invoice",
       icon: <FileText className="h-5 w-5" />,
       path: "/invoice",
@@ -115,24 +133,6 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
       icon: <Settings className="h-5 w-5" />,
       path: "/settings",
       adminOnly: true,
-    },
-    {
-      title: "Confirmation Team",
-      icon: <UserCheck className="h-5 w-5" />,
-      path: "/confirmation-team",
-      adminOnly: false
-    },
-    {
-      title: "Confirmation Overview",
-      icon: <Users2 className="h-5 w-5" />,
-      path: "/confirmation-team-overview",
-      adminOnly: false
-    },
-    {
-      title: "Team Overview 2",
-      icon: <BarChart3 className="h-5 w-5" />,
-      path: "/team-overview-2",
-      adminOnly: false
     },
   ];
 
