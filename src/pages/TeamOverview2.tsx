@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { format } from "date-fns";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { format, subDays } from "date-fns";
+import { DateRange } from "react-day-picker";
 import {
   Search,
   ShoppingCart,
@@ -37,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   useConfirmationUsers,
@@ -48,6 +50,8 @@ import { ORDER_STATUSES } from "@/utils/order-utils";
 import {
   buildConfirmationUserOptions,
   buildDateRangeParams,
+  DateFilterPreset,
+  getDateRangeFromPreset,
 } from "@/utils/overview-filters";
 
 const ALL = "ALL";
@@ -73,6 +77,10 @@ const formatProducts = (order: {
 };
 
 const TeamOverview2 = () => {
+  const [dateFilter, setDateFilter] = useState<DateFilterPreset>("thisMonth");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() =>
+    getDateRangeFromPreset("thisMonth")
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [confirmationUserFilter, setConfirmationUserFilter] = useState(ALL);
@@ -82,9 +90,32 @@ const TeamOverview2 = () => {
   const debouncedSearch = useDebounce(searchTerm, 200);
 
   const dateParams = useMemo(
-    () => buildDateRangeParams("thisMonth"),
-    []
+    () => buildDateRangeParams(dateFilter, dateRange),
+    [dateFilter, dateRange]
   );
+
+  const periodLabel = useMemo(() => {
+    if (dateFilter === "custom") {
+      if (dateRange?.from && dateRange?.to) {
+        return `${format(dateRange.from, "dd MMM yyyy")} – ${format(dateRange.to, "dd MMM yyyy")}`;
+      }
+      return "Select a date range";
+    }
+
+    const labels: Record<Exclude<DateFilterPreset, "custom">, string> = {
+      today: format(new Date(), "dd MMM yyyy"),
+      yesterday: format(subDays(new Date(), 1), "dd MMM yyyy"),
+      lastWeek: "Last 7 days",
+      lastMonth: "Last 30 days",
+      thisMonth: format(new Date(), "MMMM yyyy"),
+    };
+    return labels[dateFilter];
+  }, [dateFilter, dateRange]);
+
+  const handleDateFilterChange = useCallback((value: DateFilterPreset) => {
+    setDateFilter(value);
+    setDateRange(getDateRangeFromPreset(value));
+  }, []);
 
   const orderFilters = useMemo(
     () => ({
@@ -183,7 +214,14 @@ const TeamOverview2 = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, statusFilter, confirmationUserFilter, productFilter]);
+  }, [
+    debouncedSearch,
+    statusFilter,
+    confirmationUserFilter,
+    productFilter,
+    dateFilter,
+    dateRange,
+  ]);
 
   const isInitialLoad = isLoadingOrders && orders.length === 0;
 
@@ -198,8 +236,6 @@ const TeamOverview2 = () => {
     );
   }
 
-  const monthLabel = format(new Date(), "MMMM yyyy");
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -208,7 +244,7 @@ const TeamOverview2 = () => {
             Team Overview 2
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Orders for {monthLabel} — filter by confirmation user, product, or status
+            Orders for {periodLabel} — filter by confirmation user, product, or status
           </p>
         </div>
 
@@ -220,8 +256,8 @@ const TeamOverview2 = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="relative lg:col-span-1">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search orders, customers, tracking..."
@@ -230,6 +266,26 @@ const TeamOverview2 = () => {
                   className="pl-9"
                 />
               </div>
+
+              <Select value={dateFilter} onValueChange={handleDateFilterChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Date range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="lastWeek">Last 7 days</SelectItem>
+                  <SelectItem value="lastMonth">Last 30 days</SelectItem>
+                  <SelectItem value="thisMonth">This month</SelectItem>
+                  <SelectItem value="custom">Custom range</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {dateFilter === "custom" && (
+                <div className="xl:col-span-2">
+                  <DateRangePicker value={dateRange} onChange={setDateRange} />
+                </div>
+              )}
 
               <SearchableSelect
                 options={confirmationSelectOptions}
@@ -315,7 +371,7 @@ const TeamOverview2 = () => {
               <CardTitle className="text-base font-medium">Orders</CardTitle>
               <CardDescription>
                 {stats.totalOrders} result{stats.totalOrders !== 1 ? "s" : ""} for{" "}
-                {monthLabel}
+                {periodLabel}
               </CardDescription>
             </div>
             {isFetchingOrders && (
