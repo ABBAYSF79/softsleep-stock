@@ -311,6 +311,7 @@ export const useUpdateOrderPaymentStatus = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Payment status updated successfully');
     },
     onError: (error: any) => {
@@ -331,6 +332,7 @@ export const useFullUpdateOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       toast.success('Order updated successfully');
     },
@@ -754,8 +756,84 @@ export const useStockHistory = () => {
 };
 
 // Dashboard
+export interface DashboardLeader {
+  userId?: number;
+  id?: number;
+  name: string;
+  deliveredCount: number;
+  revenue: number;
+  commission: number;
+}
+
+export interface DashboardStats {
+  products: number;
+  users: number;
+  orders: number;
+  revenue: number;
+  commission: number;
+  ordersToday: number;
+  deliveredThisMonth: number;
+  pendingThisMonth: number;
+  inProcessThisMonth: number;
+  returnedThisMonth: number;
+  returnedThisYear: number;
+  paidDeliveredThisMonth: number;
+  unpaidDeliveredThisMonth: number;
+  paidRevenueThisMonth: number;
+  unpaidRevenueThisMonth: number;
+}
+
+export interface DashboardRecentOrder {
+  id: number;
+  customerName: string;
+  totalAmount: number | string;
+  commission: number | string;
+  createdAt: string;
+  status?: string;
+}
+
+export interface DashboardSalesPoint {
+  name: string;
+  sales: number;
+  commission: number;
+}
+
+export interface DashboardStatusBreakdown {
+  status: string;
+  count: number;
+}
+
+export interface DashboardReturnsPoint {
+  name: string;
+  returns: number;
+}
+
+export interface DashboardReturnCity {
+  city: string;
+  count: number;
+}
+
+export interface DashboardData {
+  stats: DashboardStats;
+  topSellers: DashboardLeader[];
+  topConfirmationUsers: DashboardLeader[];
+  statusBreakdown: DashboardStatusBreakdown[];
+  returnsByMonth: DashboardReturnsPoint[];
+  topReturnCities: DashboardReturnCity[];
+  recentOrders: DashboardRecentOrder[];
+  salesData: DashboardSalesPoint[];
+  isAdmin: boolean;
+  period: {
+    type: string;
+    from: string;
+    to: string;
+    label: string;
+    year?: number;
+  };
+}
+
 export const useDashboard = () => {
-  return useQuery({
+  return useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: async () => {
       const { data } = await api.get('/dashboard/stats');

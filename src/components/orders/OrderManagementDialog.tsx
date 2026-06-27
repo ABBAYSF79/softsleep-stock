@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
+import { ORDER_STATUSES, formatPrice, sanitizePhoneInput, validatePhone } from "@/utils/order-utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 
@@ -75,6 +75,7 @@ export const OrderManagementDialog = ({
   const [selectedConfirmationUser, setSelectedConfirmationUser] = useState<string>("none");
   const [note, setNote] = useState<string>("");
   const [trackingCode, setTrackingCode] = useState<string>("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [deliveryChanged, setDeliveryChanged] = useState(false);
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
 
@@ -155,8 +156,27 @@ export const OrderManagementDialog = ({
       setSelectedVariant("");
       setQuantity(1);
       setManualTotal(null);
+      setPhoneError(null);
     }
   }, [order, open]);
+
+  const handlePhoneChange = (value: string) => {
+    const sanitized = sanitizePhoneInput(value);
+    setPhone(sanitized);
+    if (phoneError) {
+      const result = validatePhone(sanitized);
+      setPhoneError(result.valid ? null : result.message ?? null);
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    if (!phone.trim()) {
+      setPhoneError(null);
+      return;
+    }
+    const result = validatePhone(phone);
+    setPhoneError(result.valid ? null : result.message ?? null);
+  };
 
   useEffect(() => {
     if (isViewing && order) {
@@ -394,6 +414,14 @@ export const OrderManagementDialog = ({
         return;
       }
 
+      const phoneValidation = validatePhone(phone);
+      if (!phoneValidation.valid) {
+        setPhoneError(phoneValidation.message ?? "Invalid phone number");
+        toast.error(phoneValidation.message ?? "Invalid phone number");
+        return;
+      }
+      setPhoneError(null);
+
       if (orderItems.length === 0) {
         toast.error("Please add at least one item to the order");
         return;
@@ -413,7 +441,7 @@ export const OrderManagementDialog = ({
         const orderData = {
           customerName,
           address,
-          phone,
+          phone: phone.trim(),
           city: selectedCity,
           totalAmount: manualTotalNumber ?? calculateGrandTotal(),
           deliveryServiceId: parseInt(selectedDeliveryService),
@@ -690,8 +718,30 @@ export const OrderManagementDialog = ({
                     <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" autoFocus />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
+                    <Label htmlFor="phone" className={phoneError ? "text-red-600" : ""}>
+                      Phone <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      onBlur={handlePhoneBlur}
+                      placeholder="+212 6XX XXX XXX"
+                      className={phoneError ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
+                      aria-invalid={Boolean(phoneError)}
+                      aria-describedby={phoneError ? "phone-error" : undefined}
+                    />
+                    {phoneError ? (
+                      <p id="phone-error" className="text-xs text-red-600">
+                        {phoneError}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Required — numbers, spaces, and + only
+                      </p>
+                    )}
                   </div>
                 </div>
 

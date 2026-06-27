@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -47,9 +47,9 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Trash2 } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
 import { DateRange } from "react-day-picker";
-import { endOfDay, endOfMonth, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
+import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 
 const OrderManagement = () => {
   const navigate = useNavigate();
@@ -381,171 +381,198 @@ const OrderManagement = () => {
 
   return (
     <MainLayout>
-      <div className={selectedIds.size ? "space-y-6 pb-24" : "space-y-6"}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight">Order Management</h1>
-            <div className="text-sm text-muted-foreground">
-              Create orders fast, review details, and run admin-only operations.
-            </div>
+      <div className={selectedIds.size ? "space-y-4 pb-24" : "space-y-4"}>
+        {/* Page header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-gray-900">
+              Order Management
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {meta.total.toLocaleString()} order{meta.total !== 1 ? "s" : ""} · create, review & manage
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              className="h-8 gap-1.5"
+            >
+              <RotateCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button onClick={handleNewOrder} size="sm" className="h-8 gap-1.5 bg-matles-600 hover:bg-matles-700">
+              <Plus className="h-3.5 w-3.5" />
+              Add order
+            </Button>
           </div>
         </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Filters</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button onClick={handleNewOrder} size="sm" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add order
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refetch()}
-                disabled={isRefetching}
-                className="gap-2"
-              >
-                <RotateCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              <Badge variant="secondary" className="tabular-nums">
-                {activeFiltersCount}
-              </Badge>
-              <Button variant="outline" size="sm" onClick={clearFilters} disabled={activeFiltersCount === 0}>
-                Clear
-              </Button>
+        {/* Compact filter toolbar */}
+        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search orders..."
+                className="h-8 pl-8 text-sm"
+              />
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground">Search</div>
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search ..."
-                />
-              </div>
 
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground">Status</div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="PENDING">Pending</SelectItem>
-                    <SelectItem value="IN_PROCESS">In Process</SelectItem>
-                    <SelectItem value="DELIVERED">Delivered</SelectItem>
-                    <SelectItem value="RETURNED">Returned</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-8 w-[120px] text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="IN_PROCESS">In Process</SelectItem>
+                <SelectItem value="DELIVERED">Delivered</SelectItem>
+                <SelectItem value="RETURNED">Returned</SelectItem>
+              </SelectContent>
+            </Select>
 
-              {isAdmin && (
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">Salesman</div>
-                  <SearchableSelect
-                    value={salesmanIdFilter}
-                    onValueChange={(value) => setSalesmanIdFilter(value || "all")}
-                    options={[
-                      { label: "All", value: "all" },
-                      ...(Array.isArray(users)
-                        ? users
-                            .filter((u: any) => u.active !== false && u.role !== "ADMIN")
-                            .map((u: any) => ({ label: u.name, value: String(u.id) }))
-                        : []),
-                    ]}
-                    placeholder="All"
-                    searchPlaceholder="Search salesman..."
-                  />
-                </div>
-              )}
+            {isAdmin && (
+              <SearchableSelect
+                value={salesmanIdFilter}
+                onValueChange={(value) => setSalesmanIdFilter(value || "all")}
+                options={[
+                  { label: "All salesmen", value: "all" },
+                  ...(Array.isArray(users)
+                    ? users
+                        .filter((u: any) => u.active !== false && u.role !== "ADMIN")
+                        .map((u: any) => ({ label: u.name, value: String(u.id) }))
+                    : []),
+                ]}
+                placeholder="Salesman"
+                searchPlaceholder="Search..."
+                className="h-8 w-[140px] text-sm"
+              />
+            )}
 
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground">Date</div>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="last3months">Last 3 months</SelectItem>
-                    <SelectItem value="all">All time</SelectItem>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="yesterday">Yesterday</SelectItem>
-                    <SelectItem value="last7days">Last 7 days</SelectItem>
-                    <SelectItem value="thisMonth">This month</SelectItem>
-                    <SelectItem value="custom">Custom range</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="h-8 w-[130px] text-sm">
+                <SelectValue placeholder="Date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="last3months">Last 3 months</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="last7days">Last 7 days</SelectItem>
+                <SelectItem value="thisMonth">This month</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
 
             {dateFilter === "custom" && (
-              <div className="max-w-md">
-                <DateRangePicker value={customDateRange} onChange={setCustomDateRange} />
-              </div>
+              <DateRangePicker value={customDateRange} onChange={setCustomDateRange} />
             )}
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Orders</CardTitle>
-            <Badge variant="secondary" className="tabular-nums">
-              {meta.total}
-            </Badge>
-          </CardHeader>
+            {activeFiltersCount > 0 && (
+              <>
+                <Badge variant="secondary" className="h-6 px-2 text-xs tabular-nums">
+                  {activeFiltersCount} filter{activeFiltersCount !== 1 ? "s" : ""}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-8 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Orders table */}
+        <Card className="overflow-hidden border-gray-200 shadow-sm">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <div className="flex items-center justify-center">
-                      <Checkbox
-                        checked={selectAllState}
-                        onCheckedChange={(checked) => {
-                          setManySelected(pageRowIds, Boolean(checked));
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Select all rows"
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-gray-200 bg-gray-50/90 hover:bg-gray-50/90">
+                    <TableHead className="h-10 w-10 px-3">
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={selectAllState}
+                          onCheckedChange={(checked) => {
+                            setManySelected(pageRowIds, Boolean(checked));
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Select all rows"
+                        />
+                      </div>
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Order
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Customer
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Phone
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Delivery
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      City / Tracking
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Date
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Status
+                    </TableHead>
+                    <TableHead className="h-10 px-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Total
+                    </TableHead>
+                    <TableHead className="h-10 w-[120px] px-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={10}
+                        className="py-16 text-center text-sm text-muted-foreground"
+                      >
+                        No orders match your filters.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    orders.map((order: any) => (
+                      <OrderRow
+                        key={order.id}
+                        order={order}
+                        isAdmin={isAdmin}
+                        isSelected={selectedIds.has(Number(order.id))}
+                        onRowClick={handleViewOrder}
+                        onToggleSelected={handleToggleSelected}
+                        onCopyPhone={copyToClipboard}
+                        onCopyTracking={copyToClipboard}
+                        onOpenBarcode={handleOpenBarcode}
+                        onPrintOrder={handlePrintOrder}
+                        onOpenGuarantee={handleOpenGuarantee}
+                        onNavigateAdvanced={handleNavigateAdvanced}
+                        onDelete={handleDeleteClick}
+                        onCopyOrderInfo={handleCopyOrderInfo}
                       />
-                    </div>
-                  </TableHead>
-                  <TableHead>Order #</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Delivery service</TableHead>
-                  <TableHead>City / Tracking</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orders.map((order: any) => (
-                  <OrderRow
-                    key={order.id}
-                    order={order}
-                    isAdmin={isAdmin}
-                    isSelected={selectedIds.has(Number(order.id))}
-                    onRowClick={handleViewOrder}
-                    onToggleSelected={handleToggleSelected}
-                    onCopyPhone={copyToClipboard}
-                    onCopyTracking={copyToClipboard}
-                    onOpenBarcode={handleOpenBarcode}
-                    onPrintOrder={handlePrintOrder}
-                    onOpenGuarantee={handleOpenGuarantee}
-                    onNavigateAdvanced={handleNavigateAdvanced}
-                    onDelete={handleDeleteClick}
-                    onCopyOrderInfo={handleCopyOrderInfo}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -713,39 +740,48 @@ const OrderRow = memo(function OrderRow({
   return (
     <TableRow
       onClick={() => onRowClick(order)}
-      className="cursor-pointer hover:bg-muted/50"
+      className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-gray-50/80 ${
+        isSelected ? "bg-matles-50/60" : ""
+      }`}
       data-selected={isSelected ? "true" : "false"}
     >
-      <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-10 px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-center">
           <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelected(Number(order.id))} aria-label="Select row" />
         </div>
       </TableCell>
-      <TableCell className="font-medium tabular-nums">{order.id}</TableCell>
-      <TableCell>{order.customerName}</TableCell>
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      <TableCell className="px-3 py-2.5">
+        <span className="font-semibold tabular-nums text-matles-700">#{order.id}</span>
+      </TableCell>
+      <TableCell className="px-3 py-2.5">
+        <span className="font-medium text-gray-900">{order.customerName}</span>
+      </TableCell>
+      <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         {order.phone ? (
           <button
             type="button"
             onClick={() => onCopyPhone(String(order.phone).trim())}
-            className="text-primary hover:underline tabular-nums"
+            className="text-sm tabular-nums text-matles-600 hover:underline"
           >
             {order.phone}
           </button>
         ) : (
-          "-"
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell>{order.deliveryService?.name || "-"}</TableCell>
-      <TableCell>
-        <div className="flex flex-col">
-          <span>{order.city || "-"}</span>
+      <TableCell className="px-3 py-2.5 text-sm text-gray-700">
+        {order.deliveryService?.name || "—"}
+      </TableCell>
+      <TableCell className="px-3 py-2.5">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-gray-800">{order.city || "—"}</span>
           {order.trackingCode && (
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => onCopyTracking(order.trackingCode)}
-                className="text-xs text-muted-foreground tabular-nums hover:text-foreground"
+                className="max-w-[120px] truncate text-xs tabular-nums text-muted-foreground hover:text-foreground"
+                title={order.trackingCode}
               >
                 {order.trackingCode}
               </button>
@@ -753,71 +789,70 @@ const OrderRow = memo(function OrderRow({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="h-6 w-6 shrink-0"
                 onClick={() => onOpenBarcode(order.trackingCode)}
                 aria-label="Generate barcode"
                 title="Generate barcode"
               >
-                <BarcodeIcon className="h-4 w-4" />
+                <BarcodeIcon className="h-3.5 w-3.5" />
               </Button>
             </div>
           )}
         </div>
       </TableCell>
-      <TableCell>
-        {new Date(order.createdAt).toLocaleString(undefined, {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+      <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-muted-foreground">
+        {format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")}
       </TableCell>
-      <TableCell>
+      <TableCell className="px-3 py-2.5">
         <OrderStatusBadge status={order.status} />
       </TableCell>
-      <TableCell className="text-right tabular-nums">
-        MAD {formatPrice(order.totalAmount)}
+      <TableCell className="px-3 py-2.5 text-right">
+        <span className="font-semibold tabular-nums text-gray-900">
+          {formatPrice(order.totalAmount)}
+        </span>
+        <span className="ml-1 text-xs text-muted-foreground">MAD</span>
       </TableCell>
-      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1">
+      <TableCell className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-0.5">
           <Button
             variant="ghost"
             size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             aria-label="Print order ticket"
             title="Print order ticket"
             onClick={() => onPrintOrder(order)}
           >
-            <Printer className="h-4 w-4" />
+            <Printer className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             aria-label="Open guarantee document"
             title="Open guarantee document"
             onClick={() => onOpenGuarantee(order)}
           >
-            <BadgeCheck className="h-4 w-4" />
+            <BadgeCheck className="h-3.5 w-3.5" />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Order actions">
-                <MoreHorizontal className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Order actions">
+                <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onRowClick(order)}>
-                <Eye className="h-4 w-4 mr-2" />
+                <Eye className="mr-2 h-4 w-4" />
                 View
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
-                <Copy className="h-4 w-4 mr-2" />
+                <Copy className="mr-2 h-4 w-4" />
                 Copy order info
               </DropdownMenuItem>
               {isAdmin && (
                 <>
                   <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>
-                    <Pencil className="h-4 w-4 mr-2" />
+                    <Pencil className="mr-2 h-4 w-4" />
                     Advanced edit
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -825,7 +860,7 @@ const OrderRow = memo(function OrderRow({
                     onClick={() => onDelete(order)}
                     className="text-red-600 focus:text-red-600"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
+                    <Trash2 className="mr-2 h-4 w-4" />
                     Delete
                   </DropdownMenuItem>
                 </>

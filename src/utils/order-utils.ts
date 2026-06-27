@@ -62,3 +62,24 @@ export const formatVariantDetails = (item: OrderItem): string => {
 export const getProductName = (item: OrderItem): string => {
   return item.variant?.product?.name || item.productName || 'Produit Inconnu';
 };
+
+const PHONE_ALLOWED_PATTERN = /^[0-9+\s]*$/;
+
+/** Keeps only digits, spaces, and + while typing */
+export const sanitizePhoneInput = (value: string): string =>
+  value.replace(/[^0-9+\s]/g, "");
+
+/** Required phone: non-empty, allowed chars only, at least one digit */
+export const validatePhone = (phone: string): { valid: boolean; message?: string } => {
+  const trimmed = phone.trim();
+  if (!trimmed) {
+    return { valid: false, message: "Phone number is required" };
+  }
+  if (!PHONE_ALLOWED_PATTERN.test(trimmed)) {
+    return { valid: false, message: "Phone can only contain numbers, spaces, and +" };
+  }
+  if (!/\d/.test(trimmed)) {
+    return { valid: false, message: "Phone must contain at least one number" };
+  }
+  return { valid: true };
+};
