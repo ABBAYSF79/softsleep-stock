@@ -40,16 +40,19 @@ import {
   useProducts,
   useUsers,
 } from "@/hooks/useApi";
-import { useDebounce } from "@/hooks/useDebounce";
 import { format } from "date-fns";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
 import {
+  applyClientSideOrderFilters,
+  buildApiOrderFilters,
   buildConfirmationUserOptions,
-  buildDateRangeParams,
+  createDefaultOverviewFilters,
   DateFilterPreset,
   getDateRangeFromPreset,
+  overviewFiltersPending,
+  OVERVIEW_ALL,
 } from "@/utils/overview-filters";
 import { ORDER_STATUSES } from "@/utils/order-utils";
 import {
@@ -58,7 +61,6 @@ import {
 } from "@/utils/excel-export";
 import { toast } from "sonner";
 
-const ALL = "ALL";
 const ITEMS_PER_PAGE = 10;
 
 const getStatusBadge = (status: string) => {
@@ -68,81 +70,74 @@ const getStatusBadge = (status: string) => {
 };
 
 const ConfirmationTeamOverview = () => {
-  const [dateFilter, setDateFilter] = useState<DateFilterPreset>("thisMonth");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() =>
-    getDateRangeFromPreset("thisMonth")
-  );
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState(ALL);
-  const [salerUserFilter, setSalerUserFilter] = useState(ALL);
-  const [confirmationUserFilter, setConfirmationUserFilter] = useState(ALL);
-  const [productFilter, setProductFilter] = useState(ALL);
+  const [draftFilters, setDraftFilters] = useState(createDefaultOverviewFilters);
+  const [appliedFilters, setAppliedFilters] = useState(createDefaultOverviewFilters);
   const [currentPage, setCurrentPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
 
-  const debouncedSearch = useDebounce(searchTerm, 150);
-
-  const dateParams = useMemo(
-    () => buildDateRangeParams(dateFilter, dateRange),
-    [dateFilter, dateRange]
-  );
-
-  const orderFilters = useMemo(
-    () => ({
-      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
-      ...(statusFilter !== ALL ? { status: statusFilter } : {}),
-      ...(salerUserFilter !== ALL ? { salesmanId: salerUserFilter } : {}),
-      ...(confirmationUserFilter !== ALL
-        ? { confirmationUserId: confirmationUserFilter }
-        : {}),
-      ...(productFilter !== ALL ? { productId: productFilter } : {}),
-      ...dateParams,
-    }),
-    [
-      confirmationUserFilter,
-      dateParams,
-      debouncedSearch,
-      productFilter,
-      salerUserFilter,
-      statusFilter,
-    ]
+  const apiOrderFilters = useMemo(
+    () => buildApiOrderFilters(appliedFilters),
+    [appliedFilters]
   );
 
   const { data: users = [] } = useUsers();
   const { data: products = [] } = useProducts();
   const { data: confirmationUsers = [], isLoading: isLoadingConfirmationUsers } =
     useConfirmationUsers();
+
+  const draftSalerId = useMemo(
+    () =>
+      draftFilters.salerUserFilter === OVERVIEW_ALL
+        ? null
+        : Number(draftFilters.salerUserFilter),
+    [draftFilters.salerUserFilter]
+  );
+
   const salerScopedOrderFilters = useMemo(
     () => ({
-      ...(salerUserFilter !== ALL ? { salesmanId: salerUserFilter } : {}),
-      ...dateParams,
+      ...(draftFilters.salerUserFilter !== OVERVIEW_ALL
+        ? { salesmanId: draftFilters.salerUserFilter }
+        : {}),
+      ...buildApiOrderFilters({
+        ...draftFilters,
+        searchTerm: "",
+        statusFilter: OVERVIEW_ALL,
+        confirmationUserFilter: OVERVIEW_ALL,
+        productFilter: OVERVIEW_ALL,
+      }),
     }),
-    [dateParams, salerUserFilter]
+    [draftFilters]
   );
 
   const {
-    data: orders = [],
+    data: rawOrders = [],
     isLoading: isLoadingOrders,
     isFetching: isFetchingOrders,
-  } = useOrders(orderFilters);
+  } = useOrders(apiOrderFilters, { keepPreviousData: false });
 
   const { data: salerScopedOrders = [] } = useOrders(salerScopedOrderFilters, {
-    enabled: salerUserFilter !== ALL,
+    enabled: draftFilters.salerUserFilter !== OVERVIEW_ALL,
+    keepPreviousData: false,
   });
 
-  const selectedSalesUserId = useMemo(
-    () => (salerUserFilter === ALL ? null : Number(salerUserFilter)),
-    [salerUserFilter]
+  const orders = useMemo(
+    () => applyClientSideOrderFilters(rawOrders, appliedFilters),
+    [rawOrders, appliedFilters]
   );
 
   const confirmationUserOptions = useMemo(
     () =>
       buildConfirmationUserOptions(
         confirmationUsers,
-        selectedSalesUserId,
-        salerUserFilter !== ALL ? salerScopedOrders : []
+        draftSalerId,
+        draftFilters.salerUserFilter !== OVERVIEW_ALL ? salerScopedOrders : []
       ),
-    [confirmationUsers, selectedSalesUserId, salerScopedOrders, salerUserFilter]
+    [
+      confirmationUsers,
+      draftSalerId,
+      draftFilters.salerUserFilter,
+      salerScopedOrders,
+    ]
   );
 
   const productOptions = useMemo(
@@ -187,37 +182,38 @@ const ConfirmationTeamOverview = () => {
     [currentPage, orders]
   );
 
+  const filtersPending = overviewFiltersPending(draftFilters, appliedFilters);
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [
-    dateFilter,
-    dateRange,
-    debouncedSearch,
-    productFilter,
-    statusFilter,
-    salerUserFilter,
-    confirmationUserFilter,
-  ]);
+  }, [appliedFilters]);
 
-  useEffect(() => {
-    if (
-      confirmationUserFilter !== ALL &&
-      !confirmationUserOptions.some(
-        (cu) => String(cu.id) === confirmationUserFilter
-      )
-    ) {
-      setConfirmationUserFilter(ALL);
-    }
-  }, [confirmationUserFilter, confirmationUserOptions]);
+  const handleApplyFilters = useCallback(() => {
+    setAppliedFilters({ ...draftFilters });
+    setCurrentPage(1);
+  }, [draftFilters]);
+
+  const handleResetFilters = useCallback(() => {
+    const defaults = createDefaultOverviewFilters();
+    setDraftFilters(defaults);
+    setAppliedFilters(defaults);
+    setCurrentPage(1);
+  }, []);
 
   const handleDateFilterChange = useCallback((value: DateFilterPreset) => {
-    setDateFilter(value);
-    setDateRange(getDateRangeFromPreset(value));
+    setDraftFilters((prev) => ({
+      ...prev,
+      dateFilter: value,
+      dateRange: getDateRangeFromPreset(value),
+    }));
   }, []);
 
   const handleSalerUserChange = useCallback((value: string) => {
-    setSalerUserFilter(value);
-    setConfirmationUserFilter(ALL);
+    setDraftFilters((prev) => ({
+      ...prev,
+      salerUserFilter: value,
+      confirmationUserFilter: OVERVIEW_ALL,
+    }));
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -229,15 +225,16 @@ const ConfirmationTeamOverview = () => {
     setIsExporting(true);
     try {
       const confirmationUserName =
-        confirmationUserFilter === ALL
+        appliedFilters.confirmationUserFilter === OVERVIEW_ALL
           ? "All Confirmation Users"
           : confirmationUserOptions.find(
-              (cu) => String(cu.id) === confirmationUserFilter
+              (cu) =>
+                String(cu.id) === appliedFilters.confirmationUserFilter
             )?.name ?? "Confirmation";
 
       const filename = buildConfirmationTeamExcelFilename(
         confirmationUserName,
-        dateRange?.from ?? new Date()
+        appliedFilters.dateRange?.from ?? new Date()
       );
       await exportConfirmationTeamOverviewToExcel(orders, filename);
       toast.success(`Exported ${orders.length} order(s) to Excel`);
@@ -246,7 +243,12 @@ const ConfirmationTeamOverview = () => {
     } finally {
       setIsExporting(false);
     }
-  }, [confirmationUserFilter, confirmationUserOptions, dateRange?.from, orders]);
+  }, [
+    appliedFilters.confirmationUserFilter,
+    appliedFilters.dateRange?.from,
+    confirmationUserOptions,
+    orders,
+  ]);
 
   const isInitialLoad = isLoadingOrders && orders.length === 0;
 
@@ -281,102 +283,159 @@ const ConfirmationTeamOverview = () => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-7">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by order ID..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-7">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by order ID..."
+                value={draftFilters.searchTerm}
+                onChange={(e) =>
+                  setDraftFilters((prev) => ({
+                    ...prev,
+                    searchTerm: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleApplyFilters();
+                }}
+                className="pl-8"
+              />
+            </div>
 
-          <Select value={dateFilter} onValueChange={handleDateFilterChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select date range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="yesterday">Yesterday</SelectItem>
-              <SelectItem value="lastWeek">Last 7 Days</SelectItem>
-              <SelectItem value="lastMonth">Last 30 Days</SelectItem>
-              <SelectItem value="thisMonth">This Month</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select
+              value={draftFilters.dateFilter}
+              onValueChange={handleDateFilterChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select date range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="lastWeek">Last 7 Days</SelectItem>
+                <SelectItem value="lastMonth">Last 30 Days</SelectItem>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
 
-          {dateFilter === "custom" && (
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
-          )}
-
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All Statuses</SelectItem>
-              {Object.values(ORDER_STATUSES).map((status) => (
-                <SelectItem key={status.value} value={status.value}>
-                  {status.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by product" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All Products</SelectItem>
-              {productOptions.map((product) => (
-                <SelectItem key={product.id} value={product.id}>
-                  {product.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={salerUserFilter} onValueChange={handleSalerUserChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by saler user" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All Saler Users</SelectItem>
-              {users.map((user) => (
-                <SelectItem key={user.id} value={String(user.id)}>
-                  {user.name} ({user.role})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={confirmationUserFilter}
-            onValueChange={setConfirmationUserFilter}
-          >
-            <SelectTrigger>
-              <SelectValue
-                placeholder={
-                  salerUserFilter !== ALL
-                    ? "Confirmation users for selected saler"
-                    : "Filter by confirmation user"
+            {draftFilters.dateFilter === "custom" && (
+              <DateRangePicker
+                value={draftFilters.dateRange}
+                onChange={(range: DateRange | undefined) =>
+                  setDraftFilters((prev) => ({ ...prev, dateRange: range }))
                 }
               />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All Confirmation Users</SelectItem>
-              {confirmationUserOptions.map((confirmationUser) => (
-                <SelectItem
-                  key={confirmationUser.id}
-                  value={String(confirmationUser.id)}
-                >
-                  {confirmationUser.name}
+            )}
+
+            <Select
+              value={draftFilters.statusFilter}
+              onValueChange={(value) =>
+                setDraftFilters((prev) => ({ ...prev, statusFilter: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={OVERVIEW_ALL}>All Statuses</SelectItem>
+                {Object.values(ORDER_STATUSES).map((status) => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={draftFilters.productFilter}
+              onValueChange={(value) =>
+                setDraftFilters((prev) => ({ ...prev, productFilter: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by product" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={OVERVIEW_ALL}>All Products</SelectItem>
+                {productOptions.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={draftFilters.salerUserFilter}
+              onValueChange={handleSalerUserChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by saler user" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={OVERVIEW_ALL}>All Saler Users</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={String(user.id)}>
+                    {user.name} ({user.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={draftFilters.confirmationUserFilter}
+              onValueChange={(value) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  confirmationUserFilter: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    draftFilters.salerUserFilter !== OVERVIEW_ALL
+                      ? "Confirmation users for selected saler"
+                      : "Filter by confirmation user"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={OVERVIEW_ALL}>
+                  All Confirmation Users
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {confirmationUserOptions.map((confirmationUser) => (
+                  <SelectItem
+                    key={confirmationUser.id}
+                    value={String(confirmationUser.id)}
+                  >
+                    {confirmationUser.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={handleApplyFilters} disabled={isFetchingOrders}>
+              {isFetchingOrders ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Apply filters
+            </Button>
+            <Button variant="outline" onClick={handleResetFilters}>
+              Reset
+            </Button>
+            {filtersPending && (
+              <span className="text-sm text-amber-600">
+                Filters changed — click Apply to update results
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">

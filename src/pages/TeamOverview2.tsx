@@ -45,16 +45,18 @@ import {
   useOrders,
   useProducts,
 } from "@/hooks/useApi";
-import { useDebounce } from "@/hooks/useDebounce";
 import { ORDER_STATUSES } from "@/utils/order-utils";
 import {
+  applyClientSideOrderFilters,
+  buildApiOrderFilters,
   buildConfirmationUserOptions,
-  buildDateRangeParams,
+  createDefaultOverviewFilters,
   DateFilterPreset,
   getDateRangeFromPreset,
+  overviewFiltersPending,
+  OVERVIEW_ALL,
 } from "@/utils/overview-filters";
 
-const ALL = "ALL";
 const ITEMS_PER_PAGE = 15;
 
 const getStatusBadge = (status: string) => {
@@ -77,27 +79,19 @@ const formatProducts = (order: {
 };
 
 const TeamOverview2 = () => {
-  const [dateFilter, setDateFilter] = useState<DateFilterPreset>("thisMonth");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() =>
-    getDateRangeFromPreset("thisMonth")
-  );
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState(ALL);
-  const [confirmationUserFilter, setConfirmationUserFilter] = useState(ALL);
-  const [productFilter, setProductFilter] = useState(ALL);
+  const [draftFilters, setDraftFilters] = useState(createDefaultOverviewFilters);
+  const [appliedFilters, setAppliedFilters] = useState(createDefaultOverviewFilters);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const debouncedSearch = useDebounce(searchTerm, 200);
-
-  const dateParams = useMemo(
-    () => buildDateRangeParams(dateFilter, dateRange),
-    [dateFilter, dateRange]
+  const apiOrderFilters = useMemo(
+    () => buildApiOrderFilters(appliedFilters),
+    [appliedFilters]
   );
 
   const periodLabel = useMemo(() => {
-    if (dateFilter === "custom") {
-      if (dateRange?.from && dateRange?.to) {
-        return `${format(dateRange.from, "dd MMM yyyy")} – ${format(dateRange.to, "dd MMM yyyy")}`;
+    if (appliedFilters.dateFilter === "custom") {
+      if (appliedFilters.dateRange?.from && appliedFilters.dateRange?.to) {
+        return `${format(appliedFilters.dateRange.from, "dd MMM yyyy")} – ${format(appliedFilters.dateRange.to, "dd MMM yyyy")}`;
       }
       return "Select a date range";
     }
@@ -109,35 +103,30 @@ const TeamOverview2 = () => {
       lastMonth: "Last 30 days",
       thisMonth: format(new Date(), "MMMM yyyy"),
     };
-    return labels[dateFilter];
-  }, [dateFilter, dateRange]);
+    return labels[appliedFilters.dateFilter];
+  }, [appliedFilters.dateFilter, appliedFilters.dateRange]);
 
   const handleDateFilterChange = useCallback((value: DateFilterPreset) => {
-    setDateFilter(value);
-    setDateRange(getDateRangeFromPreset(value));
+    setDraftFilters((prev) => ({
+      ...prev,
+      dateFilter: value,
+      dateRange: getDateRangeFromPreset(value),
+    }));
   }, []);
-
-  const orderFilters = useMemo(
-    () => ({
-      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
-      ...(statusFilter !== ALL ? { status: statusFilter } : {}),
-      ...(confirmationUserFilter !== ALL
-        ? { confirmationUserId: confirmationUserFilter }
-        : {}),
-      ...(productFilter !== ALL ? { productId: productFilter } : {}),
-      ...dateParams,
-    }),
-    [confirmationUserFilter, dateParams, debouncedSearch, productFilter, statusFilter]
-  );
 
   const { data: products = [] } = useProducts();
   const { data: confirmationUsers = [], isLoading: isLoadingConfirmationUsers } =
     useConfirmationUsers();
   const {
-    data: orders = [],
+    data: rawOrders = [],
     isLoading: isLoadingOrders,
     isFetching: isFetchingOrders,
-  } = useOrders(orderFilters);
+  } = useOrders(apiOrderFilters, { keepPreviousData: false });
+
+  const orders = useMemo(
+    () => applyClientSideOrderFilters(rawOrders, appliedFilters),
+    [rawOrders, appliedFilters]
+  );
 
   const confirmationUserOptions = useMemo(
     () => buildConfirmationUserOptions(confirmationUsers, null, []),
@@ -157,7 +146,7 @@ const TeamOverview2 = () => {
 
   const confirmationSelectOptions = useMemo(
     () => [
-      { label: "All confirmation users", value: ALL },
+      { label: "All confirmation users", value: OVERVIEW_ALL },
       ...confirmationUserOptions.map((cu) => ({
         label: cu.name,
         value: String(cu.id),
@@ -168,7 +157,7 @@ const TeamOverview2 = () => {
 
   const productSelectOptions = useMemo(
     () => [
-      { label: "All products", value: ALL },
+      { label: "All products", value: OVERVIEW_ALL },
       ...productOptions,
     ],
     [productOptions]
@@ -212,16 +201,23 @@ const TeamOverview2 = () => {
     [currentPage, orders]
   );
 
+  const filtersPending = overviewFiltersPending(draftFilters, appliedFilters);
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [
-    debouncedSearch,
-    statusFilter,
-    confirmationUserFilter,
-    productFilter,
-    dateFilter,
-    dateRange,
-  ]);
+  }, [appliedFilters]);
+
+  const handleApplyFilters = useCallback(() => {
+    setAppliedFilters({ ...draftFilters });
+    setCurrentPage(1);
+  }, [draftFilters]);
+
+  const handleResetFilters = useCallback(() => {
+    const defaults = createDefaultOverviewFilters();
+    setDraftFilters(defaults);
+    setAppliedFilters(defaults);
+    setCurrentPage(1);
+  }, []);
 
   const isInitialLoad = isLoadingOrders && orders.length === 0;
 
@@ -244,7 +240,7 @@ const TeamOverview2 = () => {
             Team Overview 2
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Orders for {periodLabel} — filter by confirmation user, product, or status
+            Orders for {periodLabel} — set filters then click Apply
           </p>
         </div>
 
@@ -252,22 +248,33 @@ const TeamOverview2 = () => {
           <CardHeader className="pb-4">
             <CardTitle className="text-base font-medium">Filters</CardTitle>
             <CardDescription>
-              Search and filters are applied dynamically via the API
+              Choose filters, then click Apply to load matching orders
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search orders, customers, tracking..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={draftFilters.searchTerm}
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      searchTerm: e.target.value,
+                    }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleApplyFilters();
+                  }}
                   className="pl-9"
                 />
               </div>
 
-              <Select value={dateFilter} onValueChange={handleDateFilterChange}>
+              <Select
+                value={draftFilters.dateFilter}
+                onValueChange={handleDateFilterChange}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
@@ -281,16 +288,26 @@ const TeamOverview2 = () => {
                 </SelectContent>
               </Select>
 
-              {dateFilter === "custom" && (
+              {draftFilters.dateFilter === "custom" && (
                 <div className="xl:col-span-2">
-                  <DateRangePicker value={dateRange} onChange={setDateRange} />
+                  <DateRangePicker
+                    value={draftFilters.dateRange}
+                    onChange={(range: DateRange | undefined) =>
+                      setDraftFilters((prev) => ({ ...prev, dateRange: range }))
+                    }
+                  />
                 </div>
               )}
 
               <SearchableSelect
                 options={confirmationSelectOptions}
-                value={confirmationUserFilter}
-                onValueChange={setConfirmationUserFilter}
+                value={draftFilters.confirmationUserFilter}
+                onValueChange={(value) =>
+                  setDraftFilters((prev) => ({
+                    ...prev,
+                    confirmationUserFilter: value || OVERVIEW_ALL,
+                  }))
+                }
                 placeholder="Confirmation user"
                 searchPlaceholder="Search users..."
                 emptyMessage="No confirmation user found."
@@ -298,19 +315,29 @@ const TeamOverview2 = () => {
 
               <SearchableSelect
                 options={productSelectOptions}
-                value={productFilter}
-                onValueChange={setProductFilter}
+                value={draftFilters.productFilter}
+                onValueChange={(value) =>
+                  setDraftFilters((prev) => ({
+                    ...prev,
+                    productFilter: value || OVERVIEW_ALL,
+                  }))
+                }
                 placeholder="Product"
                 searchPlaceholder="Search products..."
                 emptyMessage="No product found."
               />
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select
+                value={draftFilters.statusFilter}
+                onValueChange={(value) =>
+                  setDraftFilters((prev) => ({ ...prev, statusFilter: value }))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Order status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL}>All statuses</SelectItem>
+                  <SelectItem value={OVERVIEW_ALL}>All statuses</SelectItem>
                   {Object.values(ORDER_STATUSES).map((status) => (
                     <SelectItem key={status.value} value={status.value}>
                       {status.label}
@@ -318,6 +345,25 @@ const TeamOverview2 = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleApplyFilters} disabled={isFetchingOrders}>
+                {isFetchingOrders ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="mr-2 h-4 w-4" />
+                )}
+                Apply filters
+              </Button>
+              <Button variant="outline" onClick={handleResetFilters}>
+                Reset
+              </Button>
+              {filtersPending && (
+                <span className="text-sm text-amber-600">
+                  Filters changed — click Apply to update results
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>

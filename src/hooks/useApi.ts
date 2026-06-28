@@ -105,7 +105,7 @@ export interface OrderFilters {
 
 export const useOrders = (
   filters?: OrderFilters,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; keepPreviousData?: boolean }
 ) => {
   return useQuery({
     queryKey: ['orders', filters],
@@ -114,7 +114,9 @@ export const useOrders = (
       return data;
     },
     enabled: options?.enabled ?? true,
-    placeholderData: (previousData) => previousData,
+    ...(options?.keepPreviousData === false
+      ? {}
+      : { placeholderData: (previousData: unknown) => previousData }),
     ...HEAVY_QUERY_OPTIONS,
   });
 };

@@ -8,6 +8,8 @@ import {
 } from "date-fns";
 import { DateRange } from "react-day-picker";
 
+export const OVERVIEW_ALL = "ALL";
+
 export type DateFilterPreset =
   | "today"
   | "yesterday"
@@ -160,4 +162,146 @@ export function buildConfirmationUserOptions(
   }
 
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export interface OverviewFilterState {
+  searchTerm: string;
+  statusFilter: string;
+  confirmationUserFilter: string;
+  productFilter: string;
+  salerUserFilter: string;
+  dateFilter: DateFilterPreset;
+  dateRange: DateRange | undefined;
+}
+
+export function createDefaultOverviewFilters(): OverviewFilterState {
+  return {
+    searchTerm: "",
+    statusFilter: OVERVIEW_ALL,
+    confirmationUserFilter: OVERVIEW_ALL,
+    productFilter: OVERVIEW_ALL,
+    salerUserFilter: OVERVIEW_ALL,
+    dateFilter: "thisMonth",
+    dateRange: getDateRangeFromPreset("thisMonth"),
+  };
+}
+
+/** Build query params sent to GET /orders (explicit submit flow). */
+export function buildApiOrderFilters(state: OverviewFilterState) {
+  const dateParams = buildDateRangeParams(state.dateFilter, state.dateRange);
+
+  return {
+    ...(state.searchTerm.trim() ? { search: state.searchTerm.trim() } : {}),
+    ...(state.statusFilter !== OVERVIEW_ALL ? { status: state.statusFilter } : {}),
+    ...(state.salerUserFilter !== OVERVIEW_ALL
+      ? { salesmanId: state.salerUserFilter }
+      : {}),
+    ...(state.confirmationUserFilter !== OVERVIEW_ALL
+      ? { confirmationUserId: Number(state.confirmationUserFilter) }
+      : {}),
+    ...(state.productFilter !== OVERVIEW_ALL
+      ? { productId: state.productFilter }
+      : {}),
+    ...dateParams,
+  };
+}
+
+type OverviewOrder = {
+  id?: number;
+  status?: string;
+  userId?: number;
+  confirmationUserId?: number | null;
+  confirmationUser?: { id: number; name?: string } | null;
+  user?: { id: number; name?: string } | null;
+  salesman?: { id: number; name?: string } | null;
+  customerName?: string;
+  phone?: string;
+  items?: { product?: { id?: number }; variant?: { productId?: number } }[];
+  orderItems?: { variant?: { productId?: number; product?: { id?: number } } }[];
+};
+
+/** Client-side safety net when the deployed API ignores a filter param. */
+export function applyClientSideOrderFilters<T extends OverviewOrder>(
+  orders: T[],
+  state: OverviewFilterState
+): T[] {
+  let result = orders;
+
+  if (state.confirmationUserFilter !== OVERVIEW_ALL) {
+    const cuId = Number(state.confirmationUserFilter);
+    if (Number.isFinite(cuId)) {
+      result = result.filter(
+        (o) =>
+          o.confirmationUser?.id === cuId || o.confirmationUserId === cuId
+      );
+    }
+  }
+
+  if (state.salerUserFilter !== OVERVIEW_ALL) {
+    const salerId = Number(state.salerUserFilter);
+    if (Number.isFinite(salerId)) {
+      result = result.filter(
+        (o) =>
+          o.user?.id === salerId ||
+          o.userId === salerId ||
+          o.salesman?.id === salerId
+      );
+    }
+  }
+
+  if (state.statusFilter !== OVERVIEW_ALL) {
+    const status = state.statusFilter.toUpperCase();
+    result = result.filter((o) => o.status?.toUpperCase() === status);
+  }
+
+  if (state.productFilter !== OVERVIEW_ALL) {
+    const productId = Number(state.productFilter);
+    if (Number.isFinite(productId)) {
+      result = result.filter((o) => {
+        const items = o.items ?? o.orderItems ?? [];
+        return items.some((item) => {
+          const pid =
+            item.product?.id ??
+            item.variant?.productId ??
+            item.variant?.product?.id;
+          return pid === productId;
+        });
+      });
+    }
+  }
+
+  if (state.searchTerm.trim()) {
+    const q = state.searchTerm.trim().toLowerCase();
+    result = result.filter((o) => {
+      const haystack = [
+        String(o.id ?? ""),
+        o.customerName,
+        o.phone,
+        o.confirmationUser?.name,
+        o.user?.name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+
+  return result;
+}
+
+export function overviewFiltersPending(
+  draft: OverviewFilterState,
+  applied: OverviewFilterState
+): boolean {
+  return (
+    draft.searchTerm !== applied.searchTerm ||
+    draft.statusFilter !== applied.statusFilter ||
+    draft.confirmationUserFilter !== applied.confirmationUserFilter ||
+    draft.productFilter !== applied.productFilter ||
+    draft.salerUserFilter !== applied.salerUserFilter ||
+    draft.dateFilter !== applied.dateFilter ||
+    draft.dateRange?.from?.getTime() !== applied.dateRange?.from?.getTime() ||
+    draft.dateRange?.to?.getTime() !== applied.dateRange?.to?.getTime()
+  );
 }
