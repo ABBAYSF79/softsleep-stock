@@ -26,6 +26,9 @@ interface SearchableSelectProps {
   emptyMessage?: string
   disabled?: boolean
   className?: string
+  id?: string
+  name?: string
+  "aria-label"?: string
 }
 
 export function SearchableSelect({
@@ -37,8 +40,13 @@ export function SearchableSelect({
   emptyMessage = "No option found.",
   disabled = false,
   className,
+  id,
+  name,
+  "aria-label": ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
+  const listboxId = id ? `${id}-listbox` : undefined
+  const searchInputId = id ? `${id}-search` : undefined
 
   const selectedLabel = React.useMemo(() => {
     return options.find((option) => option.value === value)?.label
@@ -48,10 +56,19 @@ export function SearchableSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
+          id={id}
+          name={name}
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-full justify-between font-normal", !value && "text-muted-foreground", className)}
+          aria-controls={listboxId}
+          aria-label={ariaLabel ?? selectedLabel ?? placeholder}
+          className={cn(
+            "w-full justify-between font-normal",
+            !selectedLabel && "text-muted-foreground",
+            className
+          )}
           disabled={disabled}
         >
           {selectedLabel || placeholder}
@@ -59,8 +76,13 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command id={listboxId}>
+          <CommandInput
+            id={searchInputId}
+            name={name ? `${name}-search` : undefined}
+            aria-label={searchPlaceholder}
+            placeholder={searchPlaceholder}
+          />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
@@ -69,7 +91,7 @@ export function SearchableSelect({
                   key={option.value}
                   value={option.label}
                   onSelect={() => {
-                    onValueChange(option.value === value ? "" : option.value)
+                    onValueChange(option.value)
                     setOpen(false)
                   }}
                   disabled={option.disabled}

@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -252,10 +253,22 @@ const TeamOverview2 = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleApplyFilters();
+              }}
+            >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <div className="relative">
+                <Label htmlFor="team-overview-search" className="sr-only">
+                  Search orders
+                </Label>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="team-overview-search"
+                  name="search"
                   placeholder="Search orders, customers, tracking..."
                   value={draftFilters.searchTerm}
                   onChange={(e) =>
@@ -264,18 +277,20 @@ const TeamOverview2 = () => {
                       searchTerm: e.target.value,
                     }))
                   }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleApplyFilters();
-                  }}
                   className="pl-9"
                 />
               </div>
 
+              <div>
+                <Label htmlFor="team-overview-date" className="sr-only">
+                  Date range
+                </Label>
               <Select
                 value={draftFilters.dateFilter}
                 onValueChange={handleDateFilterChange}
+                name="dateFilter"
               >
-                <SelectTrigger>
+                <SelectTrigger id="team-overview-date">
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -287,10 +302,15 @@ const TeamOverview2 = () => {
                   <SelectItem value="custom">Custom range</SelectItem>
                 </SelectContent>
               </Select>
+              </div>
 
               {draftFilters.dateFilter === "custom" && (
                 <div className="xl:col-span-2">
+                  <Label htmlFor="team-overview-date-range" className="sr-only">
+                    Custom date range
+                  </Label>
                   <DateRangePicker
+                    id="team-overview-date-range"
                     value={draftFilters.dateRange}
                     onChange={(range: DateRange | undefined) =>
                       setDraftFilters((prev) => ({ ...prev, dateRange: range }))
@@ -299,7 +319,14 @@ const TeamOverview2 = () => {
                 </div>
               )}
 
+              <div>
+                <Label htmlFor="team-overview-confirmation-user" className="sr-only">
+                  Confirmation user
+                </Label>
               <SearchableSelect
+                id="team-overview-confirmation-user"
+                name="confirmationUserId"
+                aria-label="Confirmation user"
                 options={confirmationSelectOptions}
                 value={draftFilters.confirmationUserFilter}
                 onValueChange={(value) =>
@@ -312,8 +339,16 @@ const TeamOverview2 = () => {
                 searchPlaceholder="Search users..."
                 emptyMessage="No confirmation user found."
               />
+              </div>
 
+              <div>
+                <Label htmlFor="team-overview-product" className="sr-only">
+                  Product
+                </Label>
               <SearchableSelect
+                id="team-overview-product"
+                name="productId"
+                aria-label="Product"
                 options={productSelectOptions}
                 value={draftFilters.productFilter}
                 onValueChange={(value) =>
@@ -326,14 +361,20 @@ const TeamOverview2 = () => {
                 searchPlaceholder="Search products..."
                 emptyMessage="No product found."
               />
+              </div>
 
+              <div>
+                <Label htmlFor="team-overview-status" className="sr-only">
+                  Order status
+                </Label>
               <Select
                 value={draftFilters.statusFilter}
                 onValueChange={(value) =>
                   setDraftFilters((prev) => ({ ...prev, statusFilter: value }))
                 }
+                name="status"
               >
-                <SelectTrigger>
+                <SelectTrigger id="team-overview-status">
                   <SelectValue placeholder="Order status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -345,10 +386,11 @@ const TeamOverview2 = () => {
                   ))}
                 </SelectContent>
               </Select>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={handleApplyFilters} disabled={isFetchingOrders}>
+              <Button type="submit" disabled={isFetchingOrders}>
                 {isFetchingOrders ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
@@ -356,7 +398,7 @@ const TeamOverview2 = () => {
                 )}
                 Apply filters
               </Button>
-              <Button variant="outline" onClick={handleResetFilters}>
+              <Button type="button" variant="outline" onClick={handleResetFilters}>
                 Reset
               </Button>
               {filtersPending && (
@@ -365,6 +407,7 @@ const TeamOverview2 = () => {
                 </span>
               )}
             </div>
+            </form>
           </CardContent>
         </Card>
 

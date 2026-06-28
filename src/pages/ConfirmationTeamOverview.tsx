@@ -44,6 +44,7 @@ import { format } from "date-fns";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   applyClientSideOrderFilters,
   buildApiOrderFilters,
@@ -284,10 +285,22 @@ const ConfirmationTeamOverview = () => {
         </div>
 
         <div className="space-y-3">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleApplyFilters();
+            }}
+          >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-7">
             <div className="relative">
+              <Label htmlFor="confirmation-overview-search" className="sr-only">
+                Search orders
+              </Label>
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
+                id="confirmation-overview-search"
+                name="search"
                 placeholder="Search by order ID..."
                 value={draftFilters.searchTerm}
                 onChange={(e) =>
@@ -296,18 +309,20 @@ const ConfirmationTeamOverview = () => {
                     searchTerm: e.target.value,
                   }))
                 }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleApplyFilters();
-                }}
                 className="pl-8"
               />
             </div>
 
+            <div>
+              <Label htmlFor="confirmation-overview-date" className="sr-only">
+                Date range
+              </Label>
             <Select
               value={draftFilters.dateFilter}
               onValueChange={handleDateFilterChange}
+              name="dateFilter"
             >
-              <SelectTrigger>
+              <SelectTrigger id="confirmation-overview-date">
                 <SelectValue placeholder="Select date range" />
               </SelectTrigger>
               <SelectContent>
@@ -319,23 +334,35 @@ const ConfirmationTeamOverview = () => {
                 <SelectItem value="custom">Custom Range</SelectItem>
               </SelectContent>
             </Select>
+            </div>
 
             {draftFilters.dateFilter === "custom" && (
-              <DateRangePicker
-                value={draftFilters.dateRange}
-                onChange={(range: DateRange | undefined) =>
-                  setDraftFilters((prev) => ({ ...prev, dateRange: range }))
-                }
-              />
+              <>
+                <Label htmlFor="confirmation-overview-date-range" className="sr-only">
+                  Custom date range
+                </Label>
+                <DateRangePicker
+                  id="confirmation-overview-date-range"
+                  value={draftFilters.dateRange}
+                  onChange={(range: DateRange | undefined) =>
+                    setDraftFilters((prev) => ({ ...prev, dateRange: range }))
+                  }
+                />
+              </>
             )}
 
+            <div>
+              <Label htmlFor="confirmation-overview-status" className="sr-only">
+                Order status
+              </Label>
             <Select
               value={draftFilters.statusFilter}
               onValueChange={(value) =>
                 setDraftFilters((prev) => ({ ...prev, statusFilter: value }))
               }
+              name="status"
             >
-              <SelectTrigger>
+              <SelectTrigger id="confirmation-overview-status">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -347,14 +374,20 @@ const ConfirmationTeamOverview = () => {
                 ))}
               </SelectContent>
             </Select>
+            </div>
 
+            <div>
+              <Label htmlFor="confirmation-overview-product" className="sr-only">
+                Product
+              </Label>
             <Select
               value={draftFilters.productFilter}
               onValueChange={(value) =>
                 setDraftFilters((prev) => ({ ...prev, productFilter: value }))
               }
+              name="productId"
             >
-              <SelectTrigger>
+              <SelectTrigger id="confirmation-overview-product">
                 <SelectValue placeholder="Filter by product" />
               </SelectTrigger>
               <SelectContent>
@@ -366,12 +399,18 @@ const ConfirmationTeamOverview = () => {
                 ))}
               </SelectContent>
             </Select>
+            </div>
 
+            <div>
+              <Label htmlFor="confirmation-overview-saler" className="sr-only">
+                Saler user
+              </Label>
             <Select
               value={draftFilters.salerUserFilter}
               onValueChange={handleSalerUserChange}
+              name="salesmanId"
             >
-              <SelectTrigger>
+              <SelectTrigger id="confirmation-overview-saler">
                 <SelectValue placeholder="Filter by saler user" />
               </SelectTrigger>
               <SelectContent>
@@ -383,7 +422,12 @@ const ConfirmationTeamOverview = () => {
                 ))}
               </SelectContent>
             </Select>
+            </div>
 
+            <div>
+              <Label htmlFor="confirmation-overview-confirmation-user" className="sr-only">
+                Confirmation user
+              </Label>
             <Select
               value={draftFilters.confirmationUserFilter}
               onValueChange={(value) =>
@@ -392,8 +436,9 @@ const ConfirmationTeamOverview = () => {
                   confirmationUserFilter: value,
                 }))
               }
+              name="confirmationUserId"
             >
-              <SelectTrigger>
+              <SelectTrigger id="confirmation-overview-confirmation-user">
                 <SelectValue
                   placeholder={
                     draftFilters.salerUserFilter !== OVERVIEW_ALL
@@ -416,10 +461,11 @@ const ConfirmationTeamOverview = () => {
                 ))}
               </SelectContent>
             </Select>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={handleApplyFilters} disabled={isFetchingOrders}>
+            <Button type="submit" disabled={isFetchingOrders}>
               {isFetchingOrders ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -427,7 +473,7 @@ const ConfirmationTeamOverview = () => {
               )}
               Apply filters
             </Button>
-            <Button variant="outline" onClick={handleResetFilters}>
+            <Button type="button" variant="outline" onClick={handleResetFilters}>
               Reset
             </Button>
             {filtersPending && (
@@ -436,6 +482,7 @@ const ConfirmationTeamOverview = () => {
               </span>
             )}
           </div>
+          </form>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">

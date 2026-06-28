@@ -14,16 +14,19 @@ import {
 interface DateRangePickerProps {
   value?: DateRange;
   onChange?: (date: DateRange | undefined) => void;
+  id?: string;
 }
 
-export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
+export function DateRangePicker({ value, onChange, id = "date-range" }: DateRangePickerProps) {
   return (
     <div className={cn("grid gap-2")}>
       <Popover>
         <PopoverTrigger asChild>
           <Button
-            id="date"
+            id={id}
+            type="button"
             variant={"outline"}
+            aria-label="Pick a date range"
             className={cn(
               "w-full justify-start text-left font-normal",
               !value && "text-muted-foreground"
