@@ -17,7 +17,8 @@ import {
   Plus, 
   Search, 
   Shield, 
-  ShoppingCart
+  ShoppingCart,
+  Truck
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "@/components/users/UserDialog";
@@ -99,6 +100,10 @@ const Users = () => {
         return <Shield className="h-4 w-4 text-purple-500" />;
       case "SALES":
         return <ShoppingCart className="h-4 w-4 text-blue-500" />;
+      case "LIVREUR":
+        return <Truck className="h-4 w-4 text-orange-500" />;
+      case "SUIVI":
+        return <Truck className="h-4 w-4 text-teal-500" />;
       default:
         return null;
     }
@@ -110,6 +115,10 @@ const Users = () => {
         return <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Admin</Badge>;
       case "SALES":
         return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Sales</Badge>;
+      case "LIVREUR":
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Livreur</Badge>;
+      case "SUIVI":
+        return <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">Suivi</Badge>;
       default:
         return <Badge>{role}</Badge>;
     }
@@ -152,6 +161,7 @@ const Users = () => {
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Delivery Services</TableHead>
               <TableHead>Last Active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -166,6 +176,32 @@ const Users = () => {
                     {getRoleIcon(user.role)}
                     {getRoleBadge(user.role)}
                   </div>
+                </TableCell>
+                <TableCell>
+                  {(user.role === "LIVREUR" || user.role === "SUIVI") ? (
+                    <div className="flex flex-col gap-1">
+                      {user.role === "SUIVI" && !user.deliveryServices?.length ? (
+                        <Badge variant="outline">All services</Badge>
+                      ) : user.deliveryServices?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {user.deliveryServices.map((service: { id: number; name: string }) => (
+                            <Badge key={service.id} variant="outline">
+                              {service.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                      {user.role === "SUIVI" && user.linkedSalesUser?.name && (
+                        <span className="text-xs text-muted-foreground">
+                          Admin: {user.linkedSalesUser.name}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   {user.lastActive ? new Date(user.lastActive).toLocaleDateString() : 'Never'}

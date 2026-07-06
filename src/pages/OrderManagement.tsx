@@ -55,6 +55,8 @@ const OrderManagement = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const isLivreur = user?.role === "LIVREUR";
+  const isSuivi = user?.role === "SUIVI";
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<any>(null);
@@ -71,7 +73,7 @@ const OrderManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  const { data: users } = useUsers();
+  const { data: users } = useUsers({ enabled: isAdmin });
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [salesmanIdFilter, setSalesmanIdFilter] = useState<string>("all");
@@ -223,7 +225,8 @@ const OrderManagement = () => {
     const lines: string[] = [];
     const items = Array.isArray(order.items) ? order.items : [];
     const supplementaryItems = Array.isArray(order.pillowItems) ? order.pillowItems : [];
-    const note = typeof order.note === "string" ? order.note.trim() : "";
+    const salesNote = typeof order.note === "string" ? order.note.trim() : "";
+    const livreurNote = typeof order.livreurNote === "string" ? order.livreurNote.trim() : "";
 
     lines.push(`Commande #${order.id ?? "-"}`);
     lines.push(`Client: ${order.customerName || "-"}`);
@@ -250,7 +253,9 @@ const OrderManagement = () => {
       lines.push("-");
     }
 
-    lines.push(`Note: ${note}`);
+    if (salesNote) lines.push(`Note sales: ${salesNote}`);
+    if (livreurNote) lines.push(`Note livreur: ${livreurNote}`);
+    if (!salesNote && !livreurNote) lines.push("Note: —");
 
     return lines.join("\n");
   }, []);
@@ -389,7 +394,8 @@ const OrderManagement = () => {
               Order Management
             </h1>
             <p className="text-sm text-muted-foreground">
-              {meta.total.toLocaleString()} order{meta.total !== 1 ? "s" : ""} · create, review & manage
+              {meta.total.toLocaleString()} order{meta.total !== 1 ? "s" : ""}
+              {isLivreur || isSuivi ? " · assigned delivery services" : " · create, review & manage"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -403,10 +409,12 @@ const OrderManagement = () => {
               <RotateCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button onClick={handleNewOrder} size="sm" className="h-8 gap-1.5 bg-matles-600 hover:bg-matles-700">
-              <Plus className="h-3.5 w-3.5" />
-              Add order
-            </Button>
+            {!isLivreur && (
+              <Button onClick={handleNewOrder} size="sm" className="h-8 gap-1.5 bg-matles-600 hover:bg-matles-700">
+                <Plus className="h-3.5 w-3.5" />
+                Add order
+              </Button>
+            )}
           </div>
         </div>
 
@@ -500,16 +508,18 @@ const OrderManagement = () => {
                 <TableHeader>
                   <TableRow className="border-b border-gray-200 bg-gray-50/90 hover:bg-gray-50/90">
                     <TableHead className="h-10 w-10 px-3">
-                      <div className="flex items-center justify-center">
-                        <Checkbox
-                          checked={selectAllState}
-                          onCheckedChange={(checked) => {
-                            setManySelected(pageRowIds, Boolean(checked));
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Select all rows"
-                        />
-                      </div>
+                      {!isLivreur && !isSuivi && (
+                        <div className="flex items-center justify-center">
+                          <Checkbox
+                            checked={selectAllState}
+                            onCheckedChange={(checked) => {
+                              setManySelected(pageRowIds, Boolean(checked));
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Select all rows"
+                          />
+                        </div>
+                      )}
                     </TableHead>
                     <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Order
@@ -556,6 +566,8 @@ const OrderManagement = () => {
                         key={order.id}
                         order={order}
                         isAdmin={isAdmin}
+                        isLivreur={isLivreur}
+                        isSuivi={isSuivi}
                         isSelected={selectedIds.has(Number(order.id))}
                         onRowClick={handleViewOrder}
                         onToggleSelected={handleToggleSelected}
@@ -654,7 +666,7 @@ const OrderManagement = () => {
         </DialogContent>
       </Dialog>
 
-      <FloatingActionBar open={selectedIds.size > 0}>
+      <FloatingActionBar open={!isLivreur && !isSuivi && selectedIds.size > 0}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <Badge variant="secondary" className="tabular-nums">
             {selectedIds.size} selected
@@ -709,6 +721,8 @@ export default OrderManagement;
 type OrderRowProps = {
   order: any;
   isAdmin: boolean;
+  isLivreur: boolean;
+  isSuivi: boolean;
   isSelected: boolean;
   onRowClick: (order: any) => void;
   onToggleSelected: (id: number) => void;
@@ -725,6 +739,8 @@ type OrderRowProps = {
 const OrderRow = memo(function OrderRow({
   order,
   isAdmin,
+  isLivreur,
+  isSuivi,
   isSelected,
   onRowClick,
   onToggleSelected,
@@ -746,9 +762,11 @@ const OrderRow = memo(function OrderRow({
       data-selected={isSelected ? "true" : "false"}
     >
       <TableCell className="w-10 px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-center">
-          <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelected(Number(order.id))} aria-label="Select row" />
-        </div>
+        {!isLivreur && !isSuivi && (
+          <div className="flex items-center justify-center">
+            <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelected(Number(order.id))} aria-label="Select row" />
+          </div>
+        )}
       </TableCell>
       <TableCell className="px-3 py-2.5">
         <span className="font-semibold tabular-nums text-matles-700">#{order.id}</span>
@@ -845,10 +863,12 @@ const OrderRow = memo(function OrderRow({
                 <Eye className="mr-2 h-4 w-4" />
                 View
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy order info
-              </DropdownMenuItem>
+              {!isLivreur && (
+                <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy order info
+                </DropdownMenuItem>
+              )}
               {isAdmin && (
                 <>
                   <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>

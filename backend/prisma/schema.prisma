@@ -34,18 +34,25 @@ model User {
   email          String         @unique
   password       String
   role           UserRole       @default(SALES)
+  linkedSalesUserId Int?
+  linkedSalesUser   User?       @relation("SuiviLinkedSales", fields: [linkedSalesUserId], references: [id])
+  suiviUsers        User[]      @relation("SuiviLinkedSales")
   lastActive     DateTime       @default(now())
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   active         Boolean        @default(true)
   activities     Activity[]
   orders         Order[]
+  enteredOrders  Order[]        @relation("OrderEnteredBy")
   stockHistories StockHistory[]
   pillowStockHistories PillowStockHistory[]
   pillowOrders   PillowOrder[]
   confirmationUsers ConfirmationUser[] @relation("SalesmanConfirmations")
   linkedConfirmationUsers ConfirmationUser[] @relation("LinkedSalesUser")
   invoices       Invoice[]
+  deliveryServices UserDeliveryService[]
+
+  @@index([linkedSalesUserId])
 }
 
 model Product {
@@ -82,6 +89,7 @@ model ProductVariant {
 model Order {
   id                Int              @id @default(autoincrement())
   userId            Int
+  enteredByUserId   Int?
   customerName      String
   status            OrderStatus      @default(PENDING)
   totalAmount       Decimal          @db.Decimal(10, 2)
@@ -95,8 +103,10 @@ model Order {
   trackingCode      String?
   isPaid            Boolean          @default(false)
   note              String?          @db.Text
+  livreurNote       String?          @db.Text
   deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
   user              User             @relation(fields: [userId], references: [id])
+  enteredBy         User?            @relation("OrderEnteredBy", fields: [enteredByUserId], references: [id])
   orderItems        OrderItem[]
   pillowItems       OrderPillowItem[]
   confirmationUserId Int?
@@ -104,6 +114,7 @@ model Order {
 
   @@index([deliveryServiceId], map: "Order_deliveryServiceId_fkey")
   @@index([userId], map: "Order_userId_fkey")
+  @@index([enteredByUserId])
 }
 
 model OrderItem {
@@ -225,6 +236,17 @@ model DeliveryService {
   updatedAt DateTime @updatedAt
   orders    Order[]
   pillowOrders PillowOrder[]
+  users     UserDeliveryService[]
+}
+
+model UserDeliveryService {
+  userId            Int
+  deliveryServiceId Int
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveryService   DeliveryService @relation(fields: [deliveryServiceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, deliveryServiceId])
+  @@index([deliveryServiceId])
 }
 
 model CommissionSettings {
@@ -301,6 +323,8 @@ model Invoice {
 enum UserRole {
   ADMIN
   SALES
+  LIVREUR
+  SUIVI
 }
 
 enum OrderStatus {

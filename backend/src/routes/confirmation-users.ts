@@ -8,8 +8,8 @@ const prisma = new PrismaClient();
 // Get all confirmation users (admin and salesperson)
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    if (req.user.role === "ADMIN") {
-      // Admin: return all confirmation users
+    if (req.user.role === "ADMIN" || req.user.role === "SUIVI") {
+      // Admin / Suivi: return all confirmation users
       const confirmationUsers = await prisma.confirmationUser.findMany({
         include: {
           salesman: {

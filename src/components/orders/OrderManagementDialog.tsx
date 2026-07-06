@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
 } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle, MessageSquare, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { ORDER_STATUSES, formatPrice, sanitizePhoneInput, validatePhone } from "@/utils/order-utils";
@@ -89,14 +89,30 @@ export const OrderManagementDialog = ({
   const queryClient = useQueryClient();
 
   const isAdmin = user?.role === "ADMIN";
-  const canOverrideTotal = user?.role === "ADMIN" || user?.role === "SALES";
-  const canEditTrackingCode = isViewing && isAdmin && status === "IN_PROCESS";
+  const isLivreur = user?.role === "LIVREUR";
+  const isSuivi = user?.role === "SUIVI";
+  const canOverrideTotal =
+    user?.role === "ADMIN" || user?.role === "SALES" || user?.role === "SUIVI";
+  const canEditTrackingCode = isViewing && (isAdmin || isSuivi) && status === "IN_PROCESS";
+  const canLivreurMarkDelivered = isViewing && isLivreur && originalStatus === "PENDING";
+  const canSuiviUpdateStatus = isViewing && isSuivi && originalStatus === "PENDING";
+  const savedLivreurNote = (order?.livreurNote ?? "").trim();
+  const savedSalesNote = (order?.note ?? "").trim();
+  const canEditSalesNote =
+    !isLivreur &&
+    (isAdmin ||
+      user?.role === "SALES" ||
+      (isSuivi && (originalStatus === "PENDING" || originalStatus === "IN_PROCESS")));
+  const showLivreurNoteSection =
+    isViewing && !isLivreur && (isAdmin || user?.role === "SALES" || isSuivi);
 
   const { data: confirmationUsers = [] } = useQuery<ConfirmationUser[]>({
-    queryKey: ["confirmationUsers"],
+    queryKey: ["confirmationUsers", user?.role],
     queryFn: async () => {
       const { data } = await api.get(
-        user?.role === "ADMIN" ? "/confirmation-users" : "/confirmation-users/my-team"
+        user?.role === "ADMIN" || user?.role === "SUIVI"
+          ? "/confirmation-users"
+          : "/confirmation-users/my-team"
       );
       return data || [];
     },
@@ -191,6 +207,20 @@ export const OrderManagementDialog = ({
 
   const selectedServiceCities =
     deliveryServices?.find((service: any) => service.id.toString() === selectedDeliveryService)?.cities || [];
+
+  const selectableDeliveryServices = useMemo(() => {
+    let services =
+      deliveryServices?.filter(
+        (service: any) =>
+          service.active !== false || service.id.toString() === selectedDeliveryService
+      ) ?? [];
+
+    if (isSuivi && user?.deliveryServiceIds?.length) {
+      services = services.filter((service: any) => user.deliveryServiceIds!.includes(service.id));
+    }
+
+    return services;
+  }, [deliveryServices, selectedDeliveryService, isSuivi, user?.deliveryServiceIds]);
 
   const deliveryServiceName = isViewing
     ? deliveryServices?.find((service: any) => service.id.toString() === order?.deliveryServiceId?.toString())?.name
@@ -353,14 +383,35 @@ export const OrderManagementDialog = ({
     e.preventDefault();
 
     if (isViewing) {
+      if (isLivreur) {
+        if (status !== "DELIVERED" || originalStatus !== "PENDING") {
+          toast.error("Livreur can only mark pending orders as delivered");
+          return;
+        }
+
+        try {
+          await updateOrderStatus.mutateAsync({
+            id: order!.id,
+            status: "DELIVERED",
+          });
+          toast.success("Order marked as delivered");
+          onOpenChange(false);
+          queryClient.invalidateQueries({ queryKey: ["orders"] });
+        } catch (error: any) {
+          toast.error(error.response?.data?.error || "Failed to update order");
+        }
+        return;
+      }
+
       if (status === "IN_PROCESS" && !trackingCode.trim()) {
         toast.error("Tracking code is required when status is In Process");
         return;
       }
 
       const changed =
-        selectedDeliveryService !== (order.deliveryServiceId?.toString() || "") ||
-        selectedCity !== (order.city || "");
+        !isSuivi &&
+        (selectedDeliveryService !== (order.deliveryServiceId?.toString() || "") ||
+          selectedCity !== (order.city || ""));
       if (changed) {
         try {
           await updateOrderDelivery.mutateAsync({
@@ -438,12 +489,11 @@ export const OrderManagementDialog = ({
       }
 
       try {
-        const orderData = {
+        const orderData: Record<string, unknown> = {
           customerName,
           address,
           phone: phone.trim(),
           city: selectedCity,
-          totalAmount: manualTotalNumber ?? calculateGrandTotal(),
           deliveryServiceId: parseInt(selectedDeliveryService),
           items: orderItems.map((item: any) => ({
             variantId: item.variantId,
@@ -460,11 +510,15 @@ export const OrderManagementDialog = ({
           trackingCode: undefined,
         };
 
+        if (manualTotalNumber !== null) {
+          orderData.totalAmount = manualTotalNumber;
+        }
+
         await createOrder.mutateAsync(orderData);
         onOpenChange(false);
         queryClient.invalidateQueries({ queryKey: ["orders"] });
-      } catch {
-        toast.error("Failed to create order");
+      } catch (error: any) {
+        toast.error(error.response?.data?.error || "Failed to create order");
       }
     }
   };
@@ -536,6 +590,26 @@ export const OrderManagementDialog = ({
                             ))}
                           </SelectContent>
                         </Select>
+                      ) : canLivreurMarkDelivered ? (
+                        <Select value={status} onValueChange={handleStatusChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PENDING">Pending</SelectItem>
+                            <SelectItem value="DELIVERED">Delivered</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : canSuiviUpdateStatus ? (
+                        <Select value={status} onValueChange={handleStatusChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PENDING">Pending</SelectItem>
+                            <SelectItem value="IN_PROCESS">In Process</SelectItem>
+                          </SelectContent>
+                        </Select>
                       ) : (
                         <div className="pt-2">
                           <OrderStatusBadge status={status} />
@@ -543,9 +617,47 @@ export const OrderManagementDialog = ({
                       )}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Note</Label>
-                      <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note to the order" />
+                    <div className="space-y-3">
+                      {showLivreurNoteSection && (
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-1.5 text-amber-950">
+                            <MessageSquare className="h-4 w-4" />
+                            Note livreur
+                          </Label>
+                          {savedLivreurNote ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 whitespace-pre-wrap">
+                              {savedLivreurNote}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-sm text-muted-foreground">
+                              —
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {canEditSalesNote ? (
+                        <div className="space-y-2">
+                          <Label>Note sales</Label>
+                          <Input
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            placeholder="Note de l'équipe commerciale"
+                          />
+                        </div>
+                      ) : isViewing && savedSalesNote ? (
+                        <div className="space-y-2">
+                          <Label>Note sales</Label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 whitespace-pre-wrap">
+                            {savedSalesNote}
+                          </div>
+                        </div>
+                      ) : isViewing ? (
+                        <div className="space-y-2">
+                          <Label>Note sales</Label>
+                          <Input value="—" disabled />
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -559,10 +671,10 @@ export const OrderManagementDialog = ({
                               setSelectedCity("");
                             }}
                             options={
-                              deliveryServices?.map((service: any) => ({
+                              selectableDeliveryServices.map((service: any) => ({
                                 label: service.name,
                                 value: service.id.toString(),
-                              })) || []
+                              }))
                             }
                             placeholder="Select delivery service"
                             searchPlaceholder="Search service..."
@@ -765,7 +877,10 @@ export const OrderManagementDialog = ({
                         setSelectedCity("");
                       }}
                       options={
-                        deliveryServices?.map((service: any) => ({ label: service.name, value: service.id.toString() })) || []
+                        selectableDeliveryServices.map((service: any) => ({
+                          label: service.name,
+                          value: service.id.toString(),
+                        }))
                       }
                       placeholder="Select delivery service"
                       searchPlaceholder="Search service..."
@@ -806,8 +921,8 @@ export const OrderManagementDialog = ({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Note</Label>
-                    <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
+                    <Label>Note sales</Label>
+                    <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note de l'équipe commerciale" />
                   </div>
                 </div>
               </CardContent>
@@ -1014,10 +1129,16 @@ export const OrderManagementDialog = ({
           </Button>
           {(!isViewing ||
             (isViewing &&
+              !isLivreur &&
               (status !== originalStatus ||
                 note !== order?.note ||
                 trackingCode !== order?.trackingCode ||
-                deliveryChanged))) && <Button onClick={handleSubmit}>{isViewing ? "Update Order" : "Create Order"}</Button>}
+                (!isSuivi && deliveryChanged)))) && (
+            <Button onClick={handleSubmit}>{isViewing ? "Update Order" : "Create Order"}</Button>
+          )}
+          {isViewing && canLivreurMarkDelivered && status === "DELIVERED" && (
+            <Button onClick={handleSubmit}>Mark as delivered</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

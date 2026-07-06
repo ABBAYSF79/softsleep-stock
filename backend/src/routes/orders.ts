@@ -1,7 +1,19 @@
 // backend/src/routes/orders.ts
 import express from 'express';
-import { PrismaClient, OrderStatus, Prisma, Activity } from '@prisma/client';
+import { PrismaClient, OrderStatus, Prisma, Activity, UserRole } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth';
+import {
+  assertCanAccessOrder,
+  assertLivreurStatusTransition,
+  assertSuiviStatusTransition,
+  assertSuiviDeliveryServiceAccess,
+  buildOrderAccessWhere,
+  denyLivreurMutation,
+  denySuiviRestrictedMutation,
+  getUserDeliveryServiceIds,
+  resolveOrderSellerUserId,
+  OrderAccessError,
+} from '../utils/order-access';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -84,7 +96,7 @@ async function applyDeliveryServiceFilter(
 // Get order statistics
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
-    const where = req.user?.role === 'ADMIN' ? {} : { userId: req.user?.id };
+    const where = await buildOrderAccessWhere(req.user!);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -162,6 +174,90 @@ router.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
+// Livreur monthly overview (livreur role only)
+router.get('/livreur-stats', authMiddleware, async (req, res) => {
+  try {
+    if (req.user!.role !== UserRole.LIVREUR) {
+      return res.status(403).json({ error: 'Livreur access only' });
+    }
+
+    const baseWhere = await buildOrderAccessWhere(req.user!);
+    const monthParam = firstQueryString(req.query.month);
+
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+
+    if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+      const [y, m] = monthParam.split('-').map(Number);
+      if (y >= 2000 && m >= 1 && m <= 12) {
+        year = y;
+        month = m;
+      }
+    }
+
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const monthWhere = {
+      ...baseWhere,
+      createdAt: { gte: monthStart, lte: monthEnd },
+    };
+
+    const [
+      totalMonth,
+      pendingMonth,
+      inProcessMonth,
+      deliveredMonth,
+      returnedMonth,
+      todayTotal,
+      todayDelivered,
+      allPending,
+    ] = await Promise.all([
+      prisma.order.count({ where: monthWhere }),
+      prisma.order.count({ where: { ...monthWhere, status: OrderStatus.PENDING } }),
+      prisma.order.count({ where: { ...monthWhere, status: OrderStatus.IN_PROCESS } }),
+      prisma.order.count({ where: { ...monthWhere, status: OrderStatus.DELIVERED } }),
+      prisma.order.count({ where: { ...monthWhere, status: OrderStatus.RETURNED } }),
+      prisma.order.count({
+        where: { ...baseWhere, createdAt: { gte: today, lt: tomorrow } },
+      }),
+      prisma.order.count({
+        where: {
+          ...baseWhere,
+          status: OrderStatus.DELIVERED,
+          createdAt: { gte: today, lt: tomorrow },
+        },
+      }),
+      prisma.order.count({ where: { ...baseWhere, status: OrderStatus.PENDING } }),
+    ]);
+
+    const deliveryRate = totalMonth > 0 ? Math.round((deliveredMonth / totalMonth) * 100) : 0;
+
+    res.json({
+      month: monthKey,
+      totalMonth,
+      pendingMonth,
+      inProcessMonth,
+      deliveredMonth,
+      returnedMonth,
+      todayTotal,
+      todayDelivered,
+      allPending,
+      deliveryRate,
+    });
+  } catch (error) {
+    console.error('Error fetching livreur stats:', error);
+    res.status(500).json({ error: 'Failed to fetch livreur stats' });
+  }
+});
+
 // Get all orders
 router.get('/', authMiddleware, async (req, res) => {
   try {
@@ -178,8 +274,10 @@ router.get('/', authMiddleware, async (req, res) => {
       dateFilter 
     } = req.query;
 
-    const where: any = req.user?.role === 'ADMIN' ? {} : { userId: req.user?.id };
-    const isAdmin = req.user?.role === 'ADMIN';
+    const where: any = await buildOrderAccessWhere(req.user!);
+    const isAdmin = req.user?.role === UserRole.ADMIN;
+    const isLivreur = req.user?.role === UserRole.LIVREUR;
+    const isSuivi = req.user?.role === UserRole.SUIVI;
     const hasPagination = typeof page !== 'undefined';
     const hasExplicitDateFilter = Boolean(dateFilter || (startDate && endDate));
 
@@ -213,12 +311,21 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     }
 
+    if (isLivreur || isSuivi) {
+      delete where.userId;
+    }
+
     const confirmationUserIdParam = parsePositiveInt(firstQueryString(confirmationUserId));
     if (confirmationUserIdParam !== null) {
       where.confirmationUserId = confirmationUserIdParam;
     }
 
     await applyDeliveryServiceFilter(where, req.query);
+
+    const cityParam = firstQueryString(req.query.city);
+    if (cityParam && cityParam !== 'all') {
+      where.city = cityParam;
+    }
 
     if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
       where.orderItems = {
@@ -402,6 +509,15 @@ router.get('/', authMiddleware, async (req, res) => {
 // Create new order
 router.post('/', authMiddleware, async (req, res) => {
   try {
+    try {
+      denyLivreurMutation(req.user!);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
     const { customerName, address, phone, totalAmount, items, deliveryServiceId, city, confirmationUserId, note, trackingCode, pillowItems } = req.body;
     console.log('Creating order for customer:', customerName);
     console.log('Items:', items);
@@ -493,21 +609,48 @@ router.post('/', authMiddleware, async (req, res) => {
     }
     
     const hasManualTotal = totalAmount !== undefined && totalAmount !== null && String(totalAmount).trim() !== '';
+
+    const parsedDeliveryServiceId = parseInt(deliveryServiceId);
+    if (req.user!.role === UserRole.SUIVI) {
+      try {
+        await assertSuiviDeliveryServiceAccess(req.user!, parsedDeliveryServiceId);
+      } catch (error) {
+        if (error instanceof OrderAccessError) {
+          return res.status(403).json({ error: error.message });
+        }
+        throw error;
+      }
+    }
+
+    let sellerUserId: number;
+    try {
+      sellerUserId = await resolveOrderSellerUserId(req.user!);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
     const finalTotal = hasManualTotal ? new Prisma.Decimal(totalAmount) : calculatedTotal;
+    const resolvedConfirmationUserId = confirmationUserId
+      ? parseInt(confirmationUserId)
+      : null;
     
     // Create order without affecting stock (PENDING status)
     const order = await prisma.order.create({
       data: {
-        userId: req.user!.id,
+        userId: sellerUserId,
+        enteredByUserId: req.user!.role === UserRole.SUIVI ? req.user!.id : null,
         customerName,
         address,
         phone,
         city,
-        deliveryServiceId: parseInt(deliveryServiceId),
+        deliveryServiceId: parsedDeliveryServiceId,
         totalAmount: finalTotal,
         commission: calculatedCommission,
         status: 'PENDING',
-        confirmationUserId: confirmationUserId ? parseInt(confirmationUserId) : null,
+        confirmationUserId: resolvedConfirmationUserId,
         note: note || null,
         trackingCode: trackingCode || null,
         orderItems: {
@@ -625,7 +768,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.patch('/:id/status', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status: newStatus, note, trackingCode } = req.body;
+    const { status: newStatus, note, livreurNote, trackingCode } = req.body;
     
     console.log(`Updating order ${id} to status ${newStatus}`);
     console.log('Note:', note);
@@ -656,12 +799,91 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
     if (!currentOrder) {
       return res.status(404).json({ error: 'Order not found' });
     }
-    
+
     const oldStatus = currentOrder.status;
+
+    const scopedDeliveryServiceIds =
+      req.user!.role === UserRole.LIVREUR || req.user!.role === UserRole.SUIVI
+        ? await getUserDeliveryServiceIds(req.user!.id)
+        : [];
+
+    try {
+      assertCanAccessOrder(req.user!, currentOrder, scopedDeliveryServiceIds);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    const isLivreur = req.user!.role === UserRole.LIVREUR;
+    const livreurNoteInput = livreurNote !== undefined ? livreurNote : note;
+
+    if (isLivreur) {
+      if (trackingCode !== undefined && trackingCode !== currentOrder.trackingCode) {
+        return res.status(403).json({ error: 'Livreur cannot update tracking code' });
+      }
+
+      const isStatusChange = Boolean(newStatus && newStatus !== oldStatus);
+      const isNoteChange =
+        livreurNoteInput !== undefined && livreurNoteInput !== (currentOrder.livreurNote ?? '');
+
+      if (!isStatusChange && !isNoteChange) {
+        return res.status(400).json({ error: 'No changes to save' });
+      }
+
+      if (isStatusChange) {
+        try {
+          assertLivreurStatusTransition(oldStatus, newStatus);
+        } catch (error) {
+          if (error instanceof OrderAccessError) {
+            return res.status(403).json({ error: error.message });
+          }
+          throw error;
+        }
+      }
+    }
+
+    if (req.user!.role === UserRole.SUIVI) {
+      const isStatusChange = Boolean(newStatus && newStatus !== oldStatus);
+      const isNoteChange = note !== undefined && note !== (currentOrder.note ?? '');
+      const isTrackingChange =
+        trackingCode !== undefined && trackingCode !== (currentOrder.trackingCode ?? '');
+
+      if (!isStatusChange && !isNoteChange && !isTrackingChange) {
+        return res.status(400).json({ error: 'No changes to save' });
+      }
+
+      if (isStatusChange) {
+        try {
+          assertSuiviStatusTransition(oldStatus, newStatus);
+        } catch (error) {
+          if (error instanceof OrderAccessError) {
+            return res.status(403).json({ error: error.message });
+          }
+          throw error;
+        }
+
+        if (newStatus === OrderStatus.IN_PROCESS) {
+          const code = trackingCode ?? currentOrder.trackingCode;
+          if (!code || !String(code).trim()) {
+            return res.status(400).json({ error: 'Tracking code is required when setting status to IN_PROCESS' });
+          }
+        }
+      } else if (isTrackingChange && oldStatus !== OrderStatus.IN_PROCESS) {
+        return res.status(403).json({ error: 'Tracking code can only be edited when order is IN_PROCESS' });
+      }
+    }
+    
     console.log(`Current status: ${oldStatus}, New status: ${newStatus}`);
     
-    // If status hasn't changed and note/tracking code haven't changed, just return
-    if (oldStatus === newStatus && currentOrder.note === note && currentOrder.trackingCode === trackingCode) {
+    const statusUnchanged = !newStatus || newStatus === oldStatus;
+    const noteUnchanged = isLivreur
+      ? livreurNoteInput === undefined || livreurNoteInput === (currentOrder.livreurNote ?? '')
+      : note === undefined || note === (currentOrder.note ?? '');
+    const trackingUnchanged = trackingCode === undefined || trackingCode === currentOrder.trackingCode;
+
+    if (statusUnchanged && noteUnchanged && trackingUnchanged) {
       return res.json(currentOrder);
     }
     
@@ -672,7 +894,8 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
         where: { id: parseInt(id) },
         data: { 
           ...(newStatus && { status: newStatus }),
-          ...(note !== undefined && { note }),
+          ...(livreurNoteInput !== undefined && isLivreur ? { livreurNote: livreurNoteInput } : {}),
+          ...(note !== undefined && !isLivreur ? { note } : {}),
           ...(trackingCode !== undefined && { trackingCode })
         },
         include: {
@@ -946,6 +1169,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
+
+    const scopedDeliveryServiceIds =
+      req.user!.role === UserRole.LIVREUR || req.user!.role === UserRole.SUIVI
+        ? await getUserDeliveryServiceIds(req.user!.id)
+        : [];
+
+    try {
+      assertCanAccessOrder(req.user!, order, scopedDeliveryServiceIds);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
     
     console.log('Raw order data:', JSON.stringify(order, null, 2));
     console.log('Confirmation User in raw data:', order.confirmationUser);
@@ -991,6 +1228,16 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Update order payment status
 router.patch('/:id/payment', authMiddleware, async (req, res) => {
   try {
+    try {
+      denyLivreurMutation(req.user!);
+      denySuiviRestrictedMutation(req.user!);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
     const { id } = req.params;
     const { isPaid } = req.body;
     
@@ -1023,6 +1270,16 @@ router.patch('/:id/payment', authMiddleware, async (req, res) => {
 // Update order delivery service and city
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
+    try {
+      denyLivreurMutation(req.user!);
+      denySuiviRestrictedMutation(req.user!);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
     const { id } = req.params;
     const { deliveryServiceId, city } = req.body;
     if (!deliveryServiceId && !city) {

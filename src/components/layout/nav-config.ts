@@ -37,6 +37,8 @@ export interface NavItem {
   icon: LucideIcon;
   group: NavGroupId;
   adminOnly?: boolean;
+  livreurOnly?: boolean;
+  suiviAllowed?: boolean;
   highlight?: boolean;
 }
 
@@ -64,6 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/products",
     icon: Package2,
     group: "catalog",
+    suiviAllowed: true,
   },
   {
     title: "Stock",
@@ -84,6 +87,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ShoppingCart,
     group: "orders",
     highlight: true,
+    suiviAllowed: true,
   },
   {
     title: "Sales Overview",
@@ -144,10 +148,26 @@ export const NAV_ITEMS: NavItem[] = [
     adminOnly: true,
   },
   {
+    title: "Mes livraisons",
+    path: "/livreur/orders",
+    icon: Truck,
+    group: "orders",
+    livreurOnly: true,
+    highlight: true,
+  },
+  {
+    title: "Statistiques",
+    path: "/livreur/stats",
+    icon: BarChart3,
+    group: "orders",
+    livreurOnly: true,
+  },
+  {
     title: "Delivery",
     path: "/delivery",
     icon: Truck,
     group: "admin",
+    suiviAllowed: true,
   },
   {
     title: "Activities",
@@ -178,6 +198,12 @@ export function getNavTitle(pathname: string): string {
   return APP_NAME;
 }
 
-export function filterNavItems(isAdmin: boolean): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+export function filterNavItems(isAdmin: boolean, isLivreur = false, isSuivi = false): NavItem[] {
+  if (isLivreur) {
+    return NAV_ITEMS.filter((item) => item.livreurOnly);
+  }
+  if (isSuivi) {
+    return NAV_ITEMS.filter((item) => item.suiviAllowed);
+  }
+  return NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && !item.livreurOnly);
 }

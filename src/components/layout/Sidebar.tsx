@@ -18,7 +18,10 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
   const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  const visibleItems = filterNavItems(isAdmin);
+  const isLivreur = user?.role === "LIVREUR";
+  const isSuivi = user?.role === "SUIVI";
+  const homePath = isSuivi ? "/orders-management" : "/";
+  const visibleItems = filterNavItems(isAdmin, isLivreur, isSuivi);
 
   return (
     <aside
@@ -35,7 +38,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
         )}
       >
         {!collapsed ? (
-          <Link to="/" className="flex min-w-0 items-center gap-2.5">
+          <Link to={homePath} className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-matles-700 text-sm font-bold text-white shadow-sm">
               MS
             </div>
@@ -48,7 +51,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
           </Link>
         ) : (
           <Link
-            to="/"
+            to={homePath}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-matles-700 text-sm font-bold text-white shadow-sm"
             title={APP_NAME}
           >

@@ -17,8 +17,14 @@ const Login = () => {
     e.preventDefault();
     try {
       setError('');
-      await login(email, password);
-      navigate('/');
+      const loggedInUser = await login(email, password);
+      if (loggedInUser?.role === 'LIVREUR') {
+        navigate('/livreur/orders');
+      } else if (loggedInUser?.role === 'SUIVI') {
+        navigate('/orders-management');
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.response?.data?.error || err.message || 'Login failed. Please check your connection.');

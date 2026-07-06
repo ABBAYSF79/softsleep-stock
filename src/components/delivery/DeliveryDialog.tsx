@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { 
   Dialog, 
   DialogContent, 
+  DialogDescription,
   DialogHeader, 
   DialogTitle,
   DialogFooter
@@ -110,6 +111,9 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Delivery Service" : "Add New Delivery Service"}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? "Update cities and settings for this delivery service" : "Create a delivery service and add supported cities"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

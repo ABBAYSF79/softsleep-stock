@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { useProducts, useCreateOrder, useUpdateOrderStatus, useDeliveryServices, OrderStatusUpdate, useUpdateOrderDelivery } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Trash2, AlertTriangle } from "lucide-react";
+import { MapPin, Trash2, AlertTriangle, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -78,6 +78,9 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
 
   // Check if user is admin
   const isAdmin = user?.role === 'ADMIN';
+  const isSales = user?.role === 'SALES';
+  const savedLivreurNote = (order?.livreurNote ?? "").trim();
+  const showLivreurNoteSection = isViewing && (isAdmin || isSales);
 
   // Fetch confirmation users
   const { data: confirmationUsers = [] } = useQuery<ConfirmationUser[]>({
@@ -152,6 +155,15 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
   const selectedServiceCities = deliveryServices?.find(
     service => service.id.toString() === selectedDeliveryService
   )?.cities || [];
+
+  const selectableDeliveryServices = useMemo(() => {
+    return (
+      deliveryServices?.filter(
+        (service) =>
+          service.active !== false || service.id.toString() === selectedDeliveryService
+      ) ?? []
+    );
+  }, [deliveryServices, selectedDeliveryService]);
 
   // Get the delivery service name for display
   const deliveryServiceName = isViewing 
@@ -439,13 +451,34 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Note</Label>
-                    <Input
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Add a note to the order"
-                    />
+                  <div className="space-y-3">
+                    {showLivreurNoteSection && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1.5 text-amber-950">
+                          <MessageSquare className="h-4 w-4" />
+                          Note livreur
+                        </Label>
+                        {savedLivreurNote ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 whitespace-pre-wrap">
+                            {savedLivreurNote}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-sm text-muted-foreground">
+                            —
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>Note sales</Label>
+                      <Input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Note de l'équipe commerciale"
+                        disabled={isViewing && !isAdmin && !isSales}
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -486,10 +519,10 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                               setSelectedCity("");
                             }}
                             options={
-                              deliveryServices?.map((service) => ({
+                              selectableDeliveryServices.map((service) => ({
                                 label: service.name,
                                 value: service.id.toString(),
-                              })) || []
+                              }))
                             }
                             placeholder="Select delivery service"
                             searchPlaceholder="Search service..."

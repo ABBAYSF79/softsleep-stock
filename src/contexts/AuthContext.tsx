@@ -5,12 +5,15 @@ interface User {
   id: number;
   name: string;
   email: string;
-  role: 'ADMIN' | 'SALES';
+  role: 'ADMIN' | 'SALES' | 'LIVREUR' | 'SUIVI';
+  linkedSalesUserId?: number;
+  deliveryServiceIds?: number[];
+  deliveryServices?: Array<{ id: number; name: string }>;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -40,6 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     localStorage.setItem('token', token);
     setUser(user);
+    return user as User;
   };
 
   const logout = () => {

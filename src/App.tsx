@@ -14,6 +14,8 @@ import PillowOrders from "./pages/PillowOrders";
 import PillowStockAnalytics from "./pages/PillowStockAnalytics";
 import Orders from "./pages/Orders";
 import OrderManagement from "./pages/OrderManagement";
+import LivreurOrders from "./pages/LivreurOrders";
+import LivreurStats from "./pages/LivreurStats";
 import Users from "./pages/Users";
 import Delivery from "./pages/Delivery";
 import Settings from "./pages/Settings";
@@ -87,6 +89,16 @@ const App = () => (
             <Route path="/orders-management" element={
               <ProtectedRoute>
                 <OrderManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/livreur/orders" element={
+              <ProtectedRoute livreurOnly>
+                <LivreurOrders />
+              </ProtectedRoute>
+            } />
+            <Route path="/livreur/stats" element={
+              <ProtectedRoute livreurOnly>
+                <LivreurStats />
               </ProtectedRoute>
             } />
             <Route path="/sales" element={

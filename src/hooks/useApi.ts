@@ -98,6 +98,7 @@ export interface OrderFilters {
   deliveryServiceName?: string;
   productId?: string;
   confirmationUserId?: string | number;
+  city?: string;
   dateFilter?: string;
   startDate?: Date | string;
   endDate?: Date | string;
@@ -128,7 +129,9 @@ export const useConfirmationUsers = (options?: { enabled?: boolean }) => {
     queryKey: ['confirmationUsers', user?.id, user?.role],
     queryFn: async () => {
       const path =
-        user?.role === 'ADMIN' ? '/confirmation-users' : '/confirmation-users/my-team';
+        user?.role === 'ADMIN' || user?.role === 'SUIVI'
+          ? '/confirmation-users'
+          : '/confirmation-users/my-team';
       const { data } = await api.get(path);
       return data ?? [];
     },
@@ -228,6 +231,30 @@ export const usePaginatedOrders = (
   });
 };
 
+export interface LivreurStats {
+  month: string;
+  totalMonth: number;
+  pendingMonth: number;
+  inProcessMonth: number;
+  deliveredMonth: number;
+  returnedMonth: number;
+  todayTotal: number;
+  todayDelivered: number;
+  allPending: number;
+  deliveryRate: number;
+}
+
+export const useLivreurStats = (month: string) => {
+  return useQuery({
+    queryKey: ['livreur-stats', month],
+    queryFn: async () => {
+      const { data } = await api.get<LivreurStats>('/orders/livreur-stats', { params: { month } });
+      return data;
+    },
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
 export const useCreateOrder = () => {
   const queryClient = useQueryClient();
   
@@ -250,8 +277,9 @@ export const useCreateOrder = () => {
 
 export interface OrderStatusUpdate {
   id: number;
-  status: string;
+  status?: string;
   note?: string;
+  livreurNote?: string;
   trackingCode?: string;
 }
 
@@ -277,7 +305,14 @@ export const useUpdateOrderStatus = () => {
           ...old,
           data: old.data.map((order: any) => 
             order.id === newData.id 
-              ? { ...order, status: newData.status, note: newData.note || order.note, trackingCode: newData.trackingCode || order.trackingCode } 
+              ? { 
+                  ...order, 
+                  status: newData.status ?? order.status, 
+                  note: newData.note !== undefined ? newData.note : order.note,
+                  livreurNote:
+                    newData.livreurNote !== undefined ? newData.livreurNote : order.livreurNote, 
+                  trackingCode: newData.trackingCode !== undefined ? newData.trackingCode : order.trackingCode,
+                } 
               : order
           )
         };
@@ -299,6 +334,7 @@ export const useUpdateOrderStatus = () => {
       queryClient.invalidateQueries({ queryKey: ['stock'] }); 
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['livreur-stats'] });
     },
   });
 };
@@ -334,6 +370,7 @@ export const useFullUpdateOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['livreur-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       toast.success('Order updated successfully');
@@ -356,6 +393,7 @@ export const useDeleteOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['livreur-stats'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Order deleted successfully');
@@ -681,13 +719,14 @@ export const usePaginatedPillowOrders = (filters: PillowOrderFilters) => {
 };
 
 // Users
-export const useUsers = () => {
+export const useUsers = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const { data } = await api.get('/users');
       return data;
     },
+    enabled: options?.enabled ?? true,
     ...REFERENCE_QUERY_OPTIONS,
   });
 };
