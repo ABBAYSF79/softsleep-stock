@@ -1,6 +1,6 @@
 // backend/src/routes/users.ts
 import express from 'express';
-import { PrismaClient, UserRole } from '@prisma/client';
+import { Prisma, PrismaClient, UserRole } from '@prisma/client';
 import { authMiddleware, adminOnly } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 
@@ -109,6 +109,36 @@ function requiresDeliveryServiceSelection(role: UserRole): boolean {
   return role === UserRole.LIVREUR;
 }
 
+function formatUserRouteError(error: unknown, fallback: string): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2002') {
+      return 'Email already exists';
+    }
+    if (error.code === 'P2003') {
+      return 'Invalid linked admin account';
+    }
+    if (error.code === 'P2025') {
+      return 'Related record not found';
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes('linkedSalesUserId') || message.includes('UserDeliveryService')) {
+    return 'Database schema is outdated. Run: npx prisma migrate deploy';
+  }
+
+  if (message.includes('SUIVI') || message.includes("Data truncated for column 'role'")) {
+    return 'SUIVI role is not available in the database. Run: npx prisma migrate deploy';
+  }
+
+  if (message.includes('Unknown argument') || message.includes('Invalid value for argument')) {
+    return 'Backend is out of date. Redeploy the server after running prisma migrate deploy';
+  }
+
+  return fallback;
+}
+
 // Get all users (admin only)
 router.get('/', authMiddleware, adminOnly, async (req, res) => {
   try {
@@ -155,6 +185,18 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
       ? [...new Set(deliveryServiceIds.map((id: number) => Number(id)).filter((id: number) => Number.isFinite(id)))]
       : [];
 
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
+
+    if (!password?.trim()) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    if (!Object.values(UserRole).includes(userRole)) {
+      return res.status(400).json({ error: 'Invalid user role' });
+    }
+
     if (requiresDeliveryServiceSelection(userRole)) {
       const validationError = await validateDeliveryServiceIds(
         normalizedDeliveryServiceIds,
@@ -199,7 +241,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
         select: userSelect,
       });
 
-      if (requiresDeliveryServices(userRole)) {
+      if (requiresDeliveryServices(userRole) && normalizedDeliveryServiceIds.length > 0) {
         await tx.userDeliveryService.createMany({
           data: normalizedDeliveryServiceIds.map((deliveryServiceId: number) => ({
             userId: created.id,
@@ -221,7 +263,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
     res.status(201).json(formatUser(user));
   } catch (error) {
     console.error('Create user error:', error);
-    res.status(400).json({ error: 'Failed to create user' });
+    res.status(400).json({ error: formatUserRouteError(error, 'Failed to create user') });
   }
 });
 
@@ -244,6 +286,14 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
     const normalizedDeliveryServiceIds = Array.isArray(deliveryServiceIds)
       ? [...new Set(deliveryServiceIds.map((value: number) => Number(value)).filter((value: number) => Number.isFinite(value)))]
       : undefined;
+
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
+
+    if (role !== undefined && !Object.values(UserRole).includes(nextRole)) {
+      return res.status(400).json({ error: 'Invalid user role' });
+    }
 
     if (requiresDeliveryServiceSelection(nextRole)) {
       const idsToValidate =
@@ -344,7 +394,7 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
     res.json(formatUser(user));
   } catch (error) {
     console.error('Update user error:', error);
-    res.status(400).json({ error: 'Failed to update user' });
+    res.status(400).json({ error: formatUserRouteError(error, 'Failed to update user') });
   }
 });
 
