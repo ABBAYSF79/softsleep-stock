@@ -134,8 +134,27 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-// Get stock history (admin only)
+// Get stock history (admin only) — supports:
+//   ?variantId=…                     → full list for one variant (sheet)
+//   ?page=1&limit=50&…               → paginated ledger (Stock History page)
+//   ?analytics=1&productId=…&…       → finance summary + monthly breakdown
 router.get('/history', authMiddleware, adminOnly, async (req, res) => {
+  const analyticsFlag = firstQueryString(req.query.analytics);
+  const pageFlag = firstQueryString(req.query.page);
+
+  if (analyticsFlag === '1' || analyticsFlag === 'true') {
+    return handleStockAnalytics(req, res);
+  }
+  if (pageFlag) {
+    return handleStockHistoryQuery(req, res);
+  }
+  return handleStockHistorySimple(req, res);
+});
+
+async function handleStockHistorySimple(
+  req: express.Request,
+  res: express.Response
+) {
   try {
     const variantIdRaw = firstQueryString(req.query.variantId);
     const variantId = variantIdRaw ? Number(variantIdRaw) : undefined;
@@ -149,24 +168,28 @@ router.get('/history', authMiddleware, adminOnly, async (req, res) => {
       include: {
         variant: {
           include: {
-            product: true
-          }
-        }
+            product: true,
+          },
+        },
+        user: { select: { id: true, name: true } },
       },
       orderBy: {
-        createdAt: 'desc'
+        createdAt: 'desc',
       },
       ...(variantId ? {} : { take: 200 }),
     });
-    
+
     res.json(history);
   } catch (error) {
     console.error('Error fetching stock history:', error);
     res.status(500).json({ error: 'Failed to fetch stock history' });
   }
-});
+}
 
-router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
+async function handleStockAnalytics(
+  req: express.Request,
+  res: express.Response
+) {
   try {
     const productIdParam = parsePositiveInt(firstQueryString(req.query.productId));
     const variantIdParam = parsePositiveInt(firstQueryString(req.query.variantId));
@@ -365,9 +388,12 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
     console.error('Error fetching stock analytics:', error);
     res.status(500).json({ error: 'Failed to fetch stock analytics' });
   }
-});
+}
 
-router.get('/history-query', authMiddleware, adminOnly, async (req, res) => {
+async function handleStockHistoryQuery(
+  req: express.Request,
+  res: express.Response
+) {
   try {
     const pageRaw = firstQueryString(req.query.page);
     const limitRaw = firstQueryString(req.query.limit);
@@ -456,7 +482,11 @@ router.get('/history-query', authMiddleware, adminOnly, async (req, res) => {
     console.error('Error fetching stock history (query):', error);
     res.status(500).json({ error: 'Failed to fetch stock history' });
   }
-});
+}
+
+// Legacy aliases — keep for older frontends / cached bundles
+router.get('/analytics', authMiddleware, adminOnly, handleStockAnalytics);
+router.get('/history-query', authMiddleware, adminOnly, handleStockHistoryQuery);
 
 // Update stock (admin only)
 router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {

@@ -818,6 +818,15 @@ export interface StockHistoryQueryParams {
   search?: string;
 }
 
+function isAxios404(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    (error as { response?: { status?: number } }).response?.status === 404
+  );
+}
+
 export const usePaginatedStockHistory = (params: StockHistoryQueryParams) => {
   return useQuery({
     queryKey: [
@@ -832,17 +841,29 @@ export const usePaginatedStockHistory = (params: StockHistoryQueryParams) => {
       params.search ?? '',
     ],
     queryFn: async () => {
+      const requestParams = {
+        page: params.page,
+        limit: params.limit,
+        ...(params.productId ? { productId: params.productId } : {}),
+        ...(params.variantId ? { variantId: params.variantId } : {}),
+        ...(params.type && params.type !== 'all' ? { type: params.type } : {}),
+        ...(params.from ? { from: params.from } : {}),
+        ...(params.to ? { to: params.to } : {}),
+        ...(params.search ? { search: params.search } : {}),
+      };
+
+      try {
+        const { data } = await api.get('/stock/history', {
+          params: requestParams,
+          timeout: 20000,
+        });
+        if (data?.meta) return data;
+      } catch (error) {
+        if (!isAxios404(error)) throw error;
+      }
+
       const { data } = await api.get('/stock/history-query', {
-        params: {
-          page: params.page,
-          limit: params.limit,
-          ...(params.productId ? { productId: params.productId } : {}),
-          ...(params.variantId ? { variantId: params.variantId } : {}),
-          ...(params.type && params.type !== 'all' ? { type: params.type } : {}),
-          ...(params.from ? { from: params.from } : {}),
-          ...(params.to ? { to: params.to } : {}),
-          ...(params.search ? { search: params.search } : {}),
-        },
+        params: requestParams,
         timeout: 20000,
       });
       return data;
@@ -867,6 +888,24 @@ export const useStockAnalytics = (params?: {
       params?.variantId ?? 'all',
     ],
     queryFn: async () => {
+      const requestParams = {
+        analytics: 1,
+        ...(params?.from ? { from: params.from } : {}),
+        ...(params?.to ? { to: params.to } : {}),
+        ...(params?.productId ? { productId: params.productId } : {}),
+        ...(params?.variantId ? { variantId: params.variantId } : {}),
+      };
+
+      try {
+        const { data } = await api.get('/stock/history', {
+          params: requestParams,
+          timeout: 20000,
+        });
+        if (data?.summary) return data;
+      } catch (error) {
+        if (!isAxios404(error)) throw error;
+      }
+
       const { data } = await api.get('/stock/analytics', {
         params: {
           ...(params?.from ? { from: params.from } : {}),
