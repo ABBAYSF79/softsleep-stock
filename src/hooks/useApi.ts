@@ -97,6 +97,7 @@ export interface OrderFilters {
   /** Substring / name match (sent with id for redundancy in production) */
   deliveryServiceName?: string;
   productId?: string;
+  variantId?: string;
   confirmationUserId?: string | number;
   city?: string;
   dateFilter?: string;
@@ -785,13 +786,19 @@ export const useDeleteUser = () => {
   });
 };
 
-export const useStockHistory = () => {
+export const useStockHistory = (
+  variantId?: number,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
-    queryKey: ['stock-history'],
+    queryKey: ['stock-history', variantId ?? 'all'],
     queryFn: async () => {
-      const { data } = await api.get('/stock/history');
+      const { data } = await api.get('/stock/history', {
+        params: variantId ? { variantId } : undefined,
+      });
       return data;
     },
+    enabled: options?.enabled ?? Boolean(variantId),
     ...HEAVY_QUERY_OPTIONS,
   });
 };

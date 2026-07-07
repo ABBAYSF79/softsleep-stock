@@ -266,6 +266,31 @@ function parseProductFilterId(productFilter: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseVariantFilterId(variantFilter: string): number | null {
+  if (variantFilter === "all" || variantFilter === "") return null;
+  const n = Number(variantFilter);
+  return Number.isFinite(n) ? n : null;
+}
+
+type CatalogVariant = {
+  id: number;
+  name?: string;
+  size?: { value: string; name?: string } | null;
+  color?: string;
+};
+
+function formatCatalogVariantLabel(variant: CatalogVariant): string {
+  const s = variant.size;
+  let sizeStr = "";
+  if (s && typeof s === "object" && "value" in s) {
+    sizeStr = s.value;
+  } else {
+    sizeStr = variant.name || "—";
+  }
+  const colorStr = variant.color ? ` • ${variant.color}` : "";
+  return `${sizeStr}${colorStr}`;
+}
+
 function formatOrderTableDate(iso: string) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : format(d, "MMM d, yyyy");
@@ -283,6 +308,7 @@ const ProductOverview = () => {
   });
   const [statusFilter, setStatusFilter] = useState("all");
   const [productFilter, setProductFilter] = useState("all");
+  const [variantFilter, setVariantFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [compareEnabled, setCompareEnabled] = useState(false);
@@ -343,7 +369,16 @@ const ProductOverview = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [dateRange, statusFilter, productFilter]);
+  }, [dateRange, statusFilter, productFilter, variantFilter]);
+
+  const handleProductFilterChange = (value: string) => {
+    const next = value || "all";
+    setProductFilter(next);
+    setVariantFilter("all");
+  };
+
+  const selectedProductId = parseProductFilterId(productFilter);
+  const variantFilterEnabled = selectedProductId !== null;
 
   const ordersQueryEnabled =
     dateFilter !== "custom" ||
@@ -362,8 +397,11 @@ const ProductOverview = () => {
     if (productFilter !== "all") {
       base.productId = productFilter;
     }
+    if (variantFilter !== "all") {
+      base.variantId = variantFilter;
+    }
     return base;
-  }, [dateRange, statusFilter, productFilter]);
+  }, [dateRange, statusFilter, productFilter, variantFilter]);
 
   const {
     data: ordersPayload,
@@ -385,8 +423,11 @@ const ProductOverview = () => {
     if (productFilter !== "all") {
       base.productId = productFilter;
     }
+    if (variantFilter !== "all") {
+      base.variantId = variantFilter;
+    }
     return base;
-  }, [dateRange, statusFilter, productFilter]);
+  }, [dateRange, statusFilter, productFilter, variantFilter]);
 
   const {
     data: prevOrdersPayload,
@@ -411,6 +452,7 @@ const ProductOverview = () => {
       : [];
 
   const filterProductId = parseProductFilterId(productFilter);
+  const filterVariantId = parseVariantFilterId(variantFilter);
 
   const prevTotalQty = useMemo(() => {
     if (!compareEnabled || !ordersQueryEnabled) return null;
@@ -424,11 +466,24 @@ const ProductOverview = () => {
         ) {
           continue;
         }
+        const vid = item.variant?.id;
+        if (
+          filterVariantId !== null &&
+          (vid === undefined || Number(vid) !== filterVariantId)
+        ) {
+          continue;
+        }
         sum += item.quantity ?? 0;
       }
     }
     return sum;
-  }, [compareEnabled, ordersQueryEnabled, prevOrders, filterProductId]);
+  }, [
+    compareEnabled,
+    ordersQueryEnabled,
+    prevOrders,
+    filterProductId,
+    filterVariantId,
+  ]);
   const totalFromApi = ordersQueryEnabled
     ? (ordersPayload?.meta?.total ?? orders.length)
     : 0;
@@ -455,6 +510,7 @@ const ProductOverview = () => {
     >();
 
     const onlyProductId = parseProductFilterId(productFilter);
+    const onlyVariantId = parseVariantFilterId(variantFilter);
 
     for (const order of orders) {
       const items = order.items ?? [];
@@ -468,10 +524,16 @@ const ProductOverview = () => {
         ) {
           continue;
         }
+        const variantId = item.variant?.id;
+        if (
+          onlyVariantId !== null &&
+          (variantId === undefined || Number(variantId) !== onlyVariantId)
+        ) {
+          continue;
+        }
         const productName =
           product?.name ?? item.variant?.product?.name ?? "—";
         const dimensionLabel = formatVariantDetails(item);
-        const variantId = item.variant?.id;
         const q = item.quantity ?? 0;
 
         if (productId != null) {
@@ -543,7 +605,7 @@ const ProductOverview = () => {
       distinctOrders,
       totalUnits,
     };
-  }, [orders, productFilter]);
+  }, [orders, productFilter, variantFilter]);
 
   const productOptions = useMemo(
     () => [
@@ -556,11 +618,42 @@ const ProductOverview = () => {
     [products]
   );
 
+  const variantOptions = useMemo(() => {
+    if (selectedProductId === null) {
+      return [{ label: "All variants", value: "all" }];
+    }
+
+    const product = (products as {
+      id: number;
+      name: string;
+      variants?: CatalogVariant[];
+    }[]).find((p) => p.id === selectedProductId);
+
+    if (!product?.variants?.length) {
+      return [{ label: "No variants for this product", value: "all", disabled: true }];
+    }
+
+    return [
+      { label: "All variants", value: "all" },
+      ...product.variants.map((variant) => ({
+        label: formatCatalogVariantLabel(variant),
+        value: String(variant.id),
+      })),
+    ];
+  }, [products, selectedProductId]);
+
   const chartDataProducts = useMemo(() => {
     let data = productQtyStats.filter((d) => d.totalQty > 0);
     const pid = parseProductFilterId(productFilter);
+    const vid = parseVariantFilterId(variantFilter);
     if (pid !== null) {
       data = data.filter((d) => Number(d.productId) === pid);
+    }
+    if (vid !== null) {
+      const variantMeta = variantQtyStats.find((v) => v.variantId === vid);
+      if (variantMeta) {
+        data = data.filter((d) => Number(d.productId) === variantMeta.productId);
+      }
     }
     return data.slice(0, 24).map((d, idx) => {
       const rank = idx + 1;
@@ -573,15 +666,19 @@ const ProductOverview = () => {
         totalQty: d.totalQty,
       };
     });
-  }, [productQtyStats, productFilter]);
+  }, [productQtyStats, productFilter, variantFilter, variantQtyStats]);
 
   const chartDataVariants = useMemo((): VariantChartRow[] => {
     let data = variantQtyStats
       .filter((d) => d.totalQty > 0)
       .map((d) => ({ ...d }));
     const pid = parseProductFilterId(productFilter);
+    const vid = parseVariantFilterId(variantFilter);
     if (pid !== null) {
       data = data.filter((d) => Number(d.productId) === pid);
+    }
+    if (vid !== null) {
+      data = data.filter((d) => d.variantId === vid);
     }
 
     const productRank = new Map<number, number>();
@@ -644,12 +741,13 @@ const ProductOverview = () => {
     }
 
     return grouped;
-  }, [variantQtyStats, productQtyStats, productFilter]);
+  }, [variantQtyStats, productQtyStats, productFilter, variantFilter]);
 
   const trendData = useMemo(() => {
     if (!dateRange?.from || !dateRange?.to) return [];
     const byDay = new Map<string, number>();
     const pidFilter = parseProductFilterId(productFilter);
+    const vidFilter = parseVariantFilterId(variantFilter);
     for (const o of orders) {
       const key = format(new Date(o.createdAt), "yyyy-MM-dd");
       let dayQty = 0;
@@ -657,6 +755,10 @@ const ProductOverview = () => {
         if (pidFilter !== null) {
           const pid = lineItemProductId(item);
           if (pid === undefined || Number(pid) !== pidFilter) continue;
+        }
+        if (vidFilter !== null) {
+          const vid = item.variant?.id;
+          if (vid === undefined || Number(vid) !== vidFilter) continue;
         }
         dayQty += item.quantity ?? 0;
       }
@@ -675,7 +777,7 @@ const ProductOverview = () => {
       cur = addDays(cur, 1);
     }
     return out;
-  }, [orders, dateRange, productFilter]);
+  }, [orders, dateRange, productFilter, variantFilter]);
 
   const insights = useMemo(() => {
     if (!distinctOrders && rows.length === 0) return null;
@@ -723,8 +825,9 @@ const ProductOverview = () => {
         dateTo: dateRange?.to,
         statusFilter,
         productFilter,
+        variantFilter,
       }),
-    [dateFilter, dateRange, statusFilter, productFilter]
+    [dateFilter, dateRange, statusFilter, productFilter, variantFilter]
   );
 
   const handleExportExcel = async () => {
@@ -799,7 +902,7 @@ const ProductOverview = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <Select value={dateFilter} onValueChange={handleDatePreset}>
             <SelectTrigger>
               <SelectValue placeholder="Period" />
@@ -822,10 +925,24 @@ const ProductOverview = () => {
           <SearchableSelect
             options={productOptions}
             value={productFilter}
-            onValueChange={(v) => setProductFilter(v || "all")}
+            onValueChange={handleProductFilterChange}
             placeholder="Product"
             searchPlaceholder="Search product..."
             emptyMessage="No product found."
+          />
+
+          <SearchableSelect
+            options={variantOptions}
+            value={variantFilter}
+            onValueChange={(v) => setVariantFilter(v || "all")}
+            placeholder={
+              variantFilterEnabled
+                ? "Variant (size / dimension)"
+                : "Select a product first"
+            }
+            searchPlaceholder="Search variant..."
+            emptyMessage="No variant found."
+            disabled={!variantFilterEnabled}
           />
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>

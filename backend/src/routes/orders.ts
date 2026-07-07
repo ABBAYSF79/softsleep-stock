@@ -269,6 +269,7 @@ router.get('/', authMiddleware, async (req, res) => {
       salesman, 
       confirmationUserId,
       productId,
+      variantId,
       startDate, 
       endDate,
       dateFilter 
@@ -327,7 +328,14 @@ router.get('/', authMiddleware, async (req, res) => {
       where.city = cityParam;
     }
 
-    if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
+    const variantIdParam = parsePositiveInt(firstQueryString(variantId));
+    if (variantIdParam !== null) {
+      where.orderItems = {
+        some: {
+          variantId: variantIdParam,
+        },
+      };
+    } else if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
       where.orderItems = {
         some: {
           variant: {

@@ -30,6 +30,7 @@ export function buildProductOverviewExcelFilename(opts: {
   dateTo?: Date;
   statusFilter: string;
   productFilter: string;
+  variantFilter?: string;
 }): string {
   const period =
     opts.dateFrom && opts.dateTo
@@ -42,6 +43,9 @@ export function buildProductOverviewExcelFilename(opts: {
   }
   if (opts.productFilter !== 'all') {
     base += `_product-${opts.productFilter}`;
+  }
+  if (opts.variantFilter && opts.variantFilter !== 'all') {
+    base += `_variant-${opts.variantFilter}`;
   }
   return safeExcelFilename(`${base}.xlsx`);
 }

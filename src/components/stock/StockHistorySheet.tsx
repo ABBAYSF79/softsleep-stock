@@ -33,12 +33,13 @@ export const StockHistorySheet = ({
   onOpenChange,
   variant,
 }: StockHistorySheetProps) => {
-  const { data: historyData, isLoading } = useStockHistory();
+  const { data: historyData, isLoading } = useStockHistory(variant?.id, {
+    enabled: open && Boolean(variant?.id),
+  });
 
   if (!variant) return null;
 
-  // Filter history for this variant
-  const variantHistory = historyData?.filter((h: any) => h.variantId === variant.id) || [];
+  const variantHistory = historyData ?? [];
 
   const getChangeTypeColor = (type: string, quantity: number) => {
     switch (type) {

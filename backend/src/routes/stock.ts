@@ -6,6 +6,13 @@ import { authMiddleware, adminOnly } from '../middleware/auth';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function firstQueryString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const v = Array.isArray(value) ? value[0] : value;
+  const s = String(v).trim();
+  return s.length ? s : undefined;
+}
+
 // Get stock overview (admin only)
 router.get('/', authMiddleware, adminOnly, async (req, res) => {
   try {
@@ -97,7 +104,15 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
 // Get stock history (admin only)
 router.get('/history', authMiddleware, adminOnly, async (req, res) => {
   try {
+    const variantIdRaw = firstQueryString(req.query.variantId);
+    const variantId = variantIdRaw ? Number(variantIdRaw) : undefined;
+
+    if (variantIdRaw && Number.isNaN(variantId)) {
+      return res.status(400).json({ error: 'Invalid variantId' });
+    }
+
     const history = await prisma.stockHistory.findMany({
+      where: variantId ? { variantId } : undefined,
       include: {
         variant: {
           include: {
@@ -108,7 +123,7 @@ router.get('/history', authMiddleware, adminOnly, async (req, res) => {
       orderBy: {
         createdAt: 'desc'
       },
-      take: 100
+      ...(variantId ? {} : { take: 200 }),
     });
     
     res.json(history);
