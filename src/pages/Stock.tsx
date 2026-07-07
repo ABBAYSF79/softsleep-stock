@@ -24,16 +24,16 @@ import { useStock } from "@/hooks/useApi";
 import { usePagination } from "@/hooks/usePagination";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { StockOperationDialog } from "@/components/stock/StockOperationDialog";
-import { StockHistorySheet } from "@/components/stock/StockHistorySheet";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { History, RefreshCw } from "lucide-react";
 
 const Stock = () => {
+  const navigate = useNavigate();
   const [stockFilter, setStockFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [isOperationDialogOpen, setIsOperationDialogOpen] = useState(false);
-  const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const { data: stockData, isLoading, error, refetch, isRefetching } = useStock();
 
   // Get unique products for the filter dropdown
@@ -108,15 +108,25 @@ const Stock = () => {
     <MainLayout>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Stock Management</h1>
-        <Button 
-          variant="outline" 
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate("/stock-history")}
+            className="gap-2"
+          >
+            <History className="h-4 w-4" />
+            Stock History
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -212,10 +222,9 @@ const Stock = () => {
                       variant="outline" 
                       size="sm"
                       onClick={() => {
-                        setSelectedVariant(item);
-                        setIsHistorySheetOpen(true);
+                        navigate(`/stock-history?variantId=${item.id}`);
                       }}
-                      title="View History"
+                      title="View full history"
                     >
                       <History className="h-4 w-4" />
                     </Button>
@@ -251,12 +260,6 @@ const Stock = () => {
       <StockOperationDialog 
         open={isOperationDialogOpen} 
         onOpenChange={setIsOperationDialogOpen}
-        variant={selectedVariant}
-      />
-      
-      <StockHistorySheet
-        open={isHistorySheetOpen}
-        onOpenChange={setIsHistorySheetOpen}
         variant={selectedVariant}
       />
     </MainLayout>

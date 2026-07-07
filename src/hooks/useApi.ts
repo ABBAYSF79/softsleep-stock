@@ -447,6 +447,8 @@ export const useAddSupply = () => {
       // Force refresh of stock data immediately
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['stock-history'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-history-query'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-analytics'] });
       // Also invalidate dashboard as it might show stock stats
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Stock supply added successfully');
@@ -469,6 +471,8 @@ export const useAddCorrection = () => {
       // Force refresh of stock data immediately
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['stock-history'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-history-query'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-analytics'] });
       // Also invalidate dashboard as it might show stock stats
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Stock correction applied successfully');
@@ -799,6 +803,82 @@ export const useStockHistory = (
       return data;
     },
     enabled: options?.enabled ?? Boolean(variantId),
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export interface StockHistoryQueryParams {
+  page: number;
+  limit: number;
+  productId?: number;
+  variantId?: number;
+  type?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+}
+
+export const usePaginatedStockHistory = (params: StockHistoryQueryParams) => {
+  return useQuery({
+    queryKey: [
+      'stock-history-query',
+      params.page,
+      params.limit,
+      params.productId ?? 'all',
+      params.variantId ?? 'all',
+      params.type ?? 'all',
+      params.from ?? null,
+      params.to ?? null,
+      params.search ?? '',
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/stock/history-query', {
+        params: {
+          page: params.page,
+          limit: params.limit,
+          ...(params.productId ? { productId: params.productId } : {}),
+          ...(params.variantId ? { variantId: params.variantId } : {}),
+          ...(params.type && params.type !== 'all' ? { type: params.type } : {}),
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+          ...(params.search ? { search: params.search } : {}),
+        },
+        timeout: 20000,
+      });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useStockAnalytics = (params?: {
+  from?: string;
+  to?: string;
+  productId?: number;
+  variantId?: number;
+}) => {
+  return useQuery({
+    queryKey: [
+      'stock-analytics',
+      params?.from ?? null,
+      params?.to ?? null,
+      params?.productId ?? 'all',
+      params?.variantId ?? 'all',
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/stock/analytics', {
+        params: {
+          ...(params?.from ? { from: params.from } : {}),
+          ...(params?.to ? { to: params.to } : {}),
+          ...(params?.productId ? { productId: params.productId } : {}),
+          ...(params?.variantId ? { variantId: params.variantId } : {}),
+        },
+        timeout: 20000,
+      });
+      return data;
+    },
+    retry: 1,
     ...HEAVY_QUERY_OPTIONS,
   });
 };
