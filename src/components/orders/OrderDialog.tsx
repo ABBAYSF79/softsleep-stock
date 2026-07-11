@@ -22,12 +22,13 @@ import { toast } from "sonner";
 import { useProducts, useCreateOrder, useUpdateOrderStatus, useDeliveryServices, OrderStatusUpdate, useUpdateOrderDelivery } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Trash2, AlertTriangle, MessageSquare } from "lucide-react";
+import { MapPin, Trash2, AlertTriangle, MessageSquare, Car } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
+import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode } from "@/utils/order-utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface OrderDialogProps {
   open: boolean;
@@ -491,13 +492,38 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                         </span>
                       )}
                     </Label>
-                    <Input
-                      value={trackingCode}
-                      onChange={(e) => setTrackingCode(e.target.value)}
-                      placeholder="Tracking Code"
-                      disabled={!canEditTrackingCode}
-                      className={status === "IN_PROCESS" && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={trackingCode}
+                        onChange={(e) => setTrackingCode(e.target.value)}
+                        placeholder="Tracking Code"
+                        disabled={!canEditTrackingCode}
+                        className={status === "IN_PROCESS" && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
+                      />
+                      {canEditTrackingCode && order?.id != null && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0"
+                              onClick={() => {
+                                const code = generateAmanaTrackingCode(order.id);
+                                setTrackingCode(code);
+                                toast.success(`Tracking code generated: ${code}`);
+                              }}
+                              aria-label="Generate Amana tracking code"
+                            >
+                              <Car className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Generate Amana tracking code
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     {status === "IN_PROCESS" && !trackingCode && (
                       <p className="text-[11px] text-red-500 font-medium">
                         Please provide a tracking code for In Process orders

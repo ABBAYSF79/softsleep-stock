@@ -1,17 +1,15 @@
-import { BadgeCheck, Barcode, CheckCircle2, MapPin, MessageSquare, Phone, Printer } from "lucide-react";
+import { CheckCircle2, Copy, MapPin, MessageCircle, MessageSquare, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
-import { formatPrice } from "@/utils/order-utils";
+import { buildOrderCopyText, formatPrice, openWhatsAppLocationRequest } from "@/utils/order-utils";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface LivreurOrderCardProps {
   order: any;
   onOpen: (order: any) => void;
   onCall: (phone: string) => void;
-  onPrintTicket: (order: any) => void;
-  onOpenGuarantee: (order: any) => void;
-  onOpenTracking: (code: string) => void;
   onMarkDelivered: (order: any) => void;
   isMarkingDelivered?: boolean;
 }
@@ -20,15 +18,32 @@ export const LivreurOrderCard = ({
   order,
   onOpen,
   onCall,
-  onPrintTicket,
-  onOpenGuarantee,
-  onOpenTracking,
   onMarkDelivered,
   isMarkingDelivered,
 }: LivreurOrderCardProps) => {
   const phone = order.phone?.trim();
   const isPending = order.status === "PENDING";
   const isDelivered = order.status === "DELIVERED";
+
+  const handleWhatsAppLocation = () => {
+    if (!phone) {
+      toast.error("Numéro client manquant");
+      return;
+    }
+    if (!openWhatsAppLocationRequest(phone)) {
+      toast.error("Numéro client invalide pour WhatsApp");
+    }
+  };
+
+  const handleCopyOrder = async () => {
+    const text = buildOrderCopyText(order);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Commande copiée");
+    } catch {
+      toast.error("Impossible de copier");
+    }
+  };
 
   return (
     <Card
@@ -109,7 +124,7 @@ export const LivreurOrderCard = ({
           </div>
 
           <div
-            className="grid grid-cols-4 gap-1.5 pt-1"
+            className="grid grid-cols-3 gap-1.5 pt-1"
             onClick={(e) => e.stopPropagation()}
           >
             {phone && (
@@ -128,32 +143,22 @@ export const LivreurOrderCard = ({
               type="button"
               variant="outline"
               size="sm"
-              className="h-11 flex-col gap-0.5 px-1 text-[10px]"
-              onClick={() => onPrintTicket(order)}
+              className="h-11 flex-col gap-0.5 px-1 text-[10px] text-[#25D366] hover:text-[#1ebe57]"
+              disabled={!phone}
+              onClick={handleWhatsAppLocation}
             >
-              <Printer className="h-4 w-4" />
-              Ticket
+              <MessageCircle className="h-4 w-4" />
+              Localisation
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="h-11 flex-col gap-0.5 px-1 text-[10px]"
-              onClick={() => onOpenGuarantee(order)}
+              onClick={handleCopyOrder}
             >
-              <BadgeCheck className="h-4 w-4" />
-              Garantie
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-11 flex-col gap-0.5 px-1 text-[10px]"
-              disabled={!order.trackingCode}
-              onClick={() => order.trackingCode && onOpenTracking(order.trackingCode)}
-            >
-              <Barcode className="h-4 w-4" />
-              Suivi
+              <Copy className="h-4 w-4" />
+              Copier
             </Button>
           </div>
 

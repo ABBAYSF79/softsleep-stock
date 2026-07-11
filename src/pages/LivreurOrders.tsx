@@ -266,9 +266,6 @@ const LivreurOrders = () => {
                 order={order}
                 onOpen={handleOpenOrder}
                 onCall={handleCall}
-                onPrintTicket={setTicketOrder}
-                onOpenGuarantee={setGuaranteeOrder}
-                onOpenTracking={setBarcodeValue}
                 onMarkDelivered={handleMarkDelivered}
                 isMarkingDelivered={deliveringOrderId === order.id}
               />
@@ -322,12 +319,14 @@ const LivreurOrders = () => {
         onOpenChange={(open) => !open && setTicketOrder(null)}
         order={ticketOrder}
         requireInProcessTracking={false}
+        hidePreview
       />
 
       <OrderGuaranteeDialog
         open={!!guaranteeOrder}
         onOpenChange={(open) => !open && setGuaranteeOrder(null)}
         order={guaranteeOrder}
+        hidePreview
       />
 
       <Dialog open={Boolean(barcodeValue)} onOpenChange={(open) => !open && setBarcodeValue(null)}>

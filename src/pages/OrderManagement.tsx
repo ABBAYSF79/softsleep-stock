@@ -47,7 +47,7 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MessageSquare, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 
@@ -772,7 +772,18 @@ const OrderRow = memo(function OrderRow({
         <span className="font-semibold tabular-nums text-matles-700">#{order.id}</span>
       </TableCell>
       <TableCell className="px-3 py-2.5">
-        <span className="font-medium text-gray-900">{order.customerName}</span>
+        <div className="min-w-0 max-w-[220px]">
+          <span className="font-medium text-gray-900">{order.customerName}</span>
+          {typeof order.note === "string" && order.note.trim() && (
+            <div
+              className="mt-1 flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] leading-snug text-amber-950 ring-1 ring-inset ring-amber-200/70"
+              title={order.note.trim()}
+            >
+              <MessageSquare className="h-3 w-3 shrink-0 text-amber-600" aria-hidden />
+              <span className="truncate">{order.note.trim()}</span>
+            </div>
+          )}
+        </div>
       </TableCell>
       <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         {order.phone ? (
