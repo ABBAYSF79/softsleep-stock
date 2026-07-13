@@ -9,7 +9,6 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Stock from "./pages/Stock";
-import StockHistory from "./pages/StockHistory";
 import PillowStock from "./pages/PillowStock";
 import PillowOrders from "./pages/PillowOrders";
 import PillowStockAnalytics from "./pages/PillowStockAnalytics";
@@ -65,11 +64,6 @@ const App = () => (
             <Route path="/stock" element={
               <ProtectedRoute adminOnly>
                 <Stock />
-              </ProtectedRoute>
-            } />
-            <Route path="/stock-history" element={
-              <ProtectedRoute adminOnly>
-                <StockHistory />
               </ProtectedRoute>
             } />
             <Route path="/pillow-stock" element={

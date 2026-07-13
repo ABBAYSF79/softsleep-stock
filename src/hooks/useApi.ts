@@ -797,10 +797,9 @@ export const useStockHistory = (
   return useQuery({
     queryKey: ['stock-history', variantId ?? 'all'],
     queryFn: async () => {
-      const { data } = await api.get('/stock/history', {
-        params: variantId ? { variantId } : undefined,
-      });
-      return data;
+      if (!variantId) return [];
+      const { data } = await api.get(`/stock/${variantId}/history`);
+      return Array.isArray(data?.history) ? data.history : [];
     },
     enabled: options?.enabled ?? Boolean(variantId),
     ...HEAVY_QUERY_OPTIONS,

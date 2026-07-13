@@ -488,6 +488,65 @@ async function handleStockHistoryQuery(
 router.get('/analytics', authMiddleware, adminOnly, handleStockAnalytics);
 router.get('/history-query', authMiddleware, adminOnly, handleStockHistoryQuery);
 
+// Get history for one variant (admin only) — dedicated drawer/timeline endpoint
+router.get('/:id/history', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const variantId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(variantId) || variantId <= 0) {
+      return res.status(400).json({ error: 'Invalid variant id' });
+    }
+
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: variantId },
+      select: {
+        id: true,
+        name: true,
+        skuExt: true,
+        stock: true,
+        product: { select: { name: true, sku: true } },
+      },
+    });
+
+    if (!variant) {
+      return res.status(404).json({ error: 'Variant not found' });
+    }
+
+    const history = await prisma.stockHistory.findMany({
+      where: { variantId },
+      select: {
+        id: true,
+        variantId: true,
+        quantity: true,
+        type: true,
+        reason: true,
+        createdAt: true,
+        previousStock: true,
+        newStock: true,
+        userId: true,
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      variant: {
+        id: variant.id,
+        product: variant.product.name,
+        variant: variant.name,
+        sku: `${variant.product.sku}${variant.skuExt}`,
+        currentStock: variant.stock,
+      },
+      history,
+    });
+  } catch (error) {
+    console.error('Error fetching variant stock history:', error);
+    res.status(500).json({
+      error: 'Failed to fetch variant stock history',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Update stock (admin only)
 router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
