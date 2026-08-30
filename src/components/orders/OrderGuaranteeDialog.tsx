@@ -12,6 +12,7 @@ import { Download, Loader2, MessageCircle, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { OrderGuarantee } from "./OrderGuarantee";
 import { toWhatsAppPhone } from "@/utils/order-utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 // @ts-ignore
 import html2pdf from "html2pdf.js";
 
@@ -41,6 +42,8 @@ export const OrderGuaranteeDialog = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const componentRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const compactActions = hidePreview || isMobile;
 
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
@@ -120,18 +123,18 @@ export const OrderGuaranteeDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
-          hidePreview
+          compactActions
             ? "w-[96vw] max-w-md rounded-2xl"
             : "max-w-[230mm] max-h-[90vh] overflow-y-auto"
         }
       >
         <DialogHeader>
           <DialogTitle>
-            {hidePreview ? `Garantie commande #${order.id}` : "Guarantee Document Preview"}
+            {compactActions ? `Garantie commande #${order.id}` : "Guarantee Document Preview"}
           </DialogTitle>
         </DialogHeader>
 
-        {hidePreview ? (
+        {compactActions ? (
           <div aria-hidden className="pointer-events-none fixed -left-[10000px] top-0">
             <OrderGuarantee ref={componentRef} order={order} />
           </div>
@@ -143,8 +146,8 @@ export const OrderGuaranteeDialog = ({
           </div>
         )}
 
-        <DialogFooter className={hidePreview ? "flex-col gap-2 sm:flex-col" : "gap-2"}>
-          {hidePreview ? (
+        <DialogFooter className={compactActions ? "flex-col gap-2 sm:flex-col" : "gap-2"}>
+          {compactActions ? (
             <>
               <Button
                 onClick={handleShareWhatsApp}

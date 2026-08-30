@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { format } from "date-fns";
-import { LogOut, Menu, UserCircle } from "lucide-react";
+import { Download, LogOut, Menu, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,9 +29,15 @@ interface NavbarProps {
   onMobileMenu: () => void;
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 export const Navbar = ({ onMobileMenu }: NavbarProps) => {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   const pageTitle = useMemo(
     () => getNavTitle(location.pathname),
@@ -39,6 +45,23 @@ export const Navbar = ({ onMobileMenu }: NavbarProps) => {
   );
 
   const todayLabel = format(new Date(), "EEEE, d MMMM yyyy");
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  };
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-gray-200/80 bg-white/95 px-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-6">
@@ -98,6 +121,15 @@ export const Navbar = ({ onMobileMenu }: NavbarProps) => {
             <DropdownMenuItem disabled className="text-xs text-muted-foreground">
               Role: {user?.role}
             </DropdownMenuItem>
+            {installPrompt && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleInstall}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Install SoftSleep app
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}

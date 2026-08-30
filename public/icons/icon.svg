@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>SoftSleep</title>
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <path d="M112 292h288v58H112z" fill="#38bdf8"/>
+  <path d="M112 350h288v34c0 23-19 42-42 42H154c-23 0-42-19-42-42v-34Z" fill="#e2e8f0"/>
+  <path d="M112 292v-57c0-24 19-43 43-43h71c19 0 35 16 35 35v65H112Z" fill="#f8fafc"/>
+  <path d="M261 292v-36c0-19 16-35 35-35h54c28 0 50 22 50 50v21H261Z" fill="#f8fafc"/>
+  <path d="M112 292h288" stroke="#bae6fd" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="163" cy="319" r="10" fill="#0f172a"/>
+  <circle cx="349" cy="319" r="10" fill="#0f172a"/>
+</svg>

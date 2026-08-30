@@ -14,6 +14,7 @@ import { Printer, Download, Loader2, MessageCircle } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import { toast } from "sonner";
 import { toWhatsAppPhone } from "@/utils/order-utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface OrderTicketDialogProps {
   open: boolean;
@@ -43,6 +44,8 @@ export const OrderTicketDialog = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const componentRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const compactActions = hidePreview || isMobile;
   const canDownloadTicket = requireInProcessTracking
     ? order?.status === "IN_PROCESS" && !!order?.trackingCode
     : true;
@@ -135,7 +138,7 @@ export const OrderTicketDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
-          hidePreview
+          compactActions
             ? "w-[96vw] max-w-md rounded-2xl"
             : "max-w-[230mm] max-h-[90vh] overflow-y-auto"
         }
@@ -146,7 +149,7 @@ export const OrderTicketDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        {hidePreview ? (
+        {compactActions ? (
           <div aria-hidden className="pointer-events-none fixed -left-[10000px] top-0">
             <OrderTicket ref={componentRef} order={order} />
           </div>
@@ -158,8 +161,8 @@ export const OrderTicketDialog = ({
           </div>
         )}
 
-        <DialogFooter className={hidePreview ? "flex-col gap-2 sm:flex-col" : "gap-2"}>
-          {hidePreview ? (
+        <DialogFooter className={compactActions ? "flex-col gap-2 sm:flex-col" : "gap-2"}>
+          {compactActions ? (
             <>
               <Button
                 onClick={handleShareWhatsApp}
