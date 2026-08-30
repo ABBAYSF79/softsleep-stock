@@ -19,7 +19,8 @@ import {
   ShoppingCart,
   TrendingUp,
   Truck,
-  Download
+  Download,
+  Barcode as BarcodeIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { OrderDialog } from "@/components/orders/OrderDialog";
@@ -29,6 +30,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import Barcode from "react-barcode";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -60,13 +63,14 @@ export default function Finance() {
   const [dateRange, setDateRange] = useState<any>(() => {
     const today = new Date();
     return {
-      from: startOfMonth(today),
-      to: endOfDay(endOfMonth(today)),
+      from: startOfMonth(subMonths(today, 5)),
+      to: endOfDay(today),
     };
   });
-  const [dateFilter, setDateFilter] = useState<string>("thisMonth");
+  const [dateFilter, setDateFilter] = useState<string>("last6Months");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [barcodeValue, setBarcodeValue] = useState<string | null>(null);
 
   const orderFilters = useMemo(() => ({
     limit: 300,
@@ -102,6 +106,12 @@ export default function Finance() {
       case "lastMonth":
         setDateRange({
           from: startOfDay(subMonths(today, 1)),
+          to: endOfDay(today),
+        });
+        break;
+      case "last6Months":
+        setDateRange({
+          from: startOfMonth(subMonths(today, 5)),
           to: endOfDay(today),
         });
         break;
@@ -266,6 +276,7 @@ export default function Finance() {
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="lastMonth">Last 30 Days</SelectItem>
+              <SelectItem value="last6Months">Last 6 Months</SelectItem>
               <SelectItem value="thisMonth">This Month</SelectItem>
               <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
@@ -306,74 +317,99 @@ export default function Finance() {
 
         {/* Orders Table */}
         <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Payment Status</TableHead>
-                <TableHead>Delivery Service</TableHead>
-                <TableHead>Total Amount</TableHead>
-                <TableHead>Commission</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders?.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell>#{order.id}</TableCell>
-                  <TableCell>{order.customerName}</TableCell>
-                  <TableCell>{format(new Date(order.createdAt), 'MMM d, yyyy')}</TableCell>
-                  <TableCell>{getStatusBadge(order.status)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {getPaymentBadge(order.isPaid)}
-                      {!order.isPaid && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleUpdatePaymentStatus(order.id, true)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        </Button>
-                      )}
-                      {order.isPaid && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleUpdatePaymentStatus(order.id, false)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <XCircle className="h-4 w-4 text-red-600" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Truck className="h-4 w-4 text-gray-500" />
-                      <span>{order.deliveryService?.name || 'N/A'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>MAD {parseFloat(order.totalAmount.toString()).toFixed(2)}</TableCell>
-                  <TableCell>MAD {parseFloat(order.commission.toString()).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewOrder(order)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Payment Status</TableHead>
+                  <TableHead>Delivery Service</TableHead>
+                  <TableHead>Tracking Code</TableHead>
+                  <TableHead>Total Amount</TableHead>
+                  <TableHead>Commission</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders?.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell>#{order.id}</TableCell>
+                    <TableCell>{order.customerName}</TableCell>
+                    <TableCell>{format(new Date(order.createdAt), 'MMM d, yyyy')}</TableCell>
+                    <TableCell>{getStatusBadge(order.status)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getPaymentBadge(order.isPaid)}
+                        {!order.isPaid && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUpdatePaymentStatus(order.id, true)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          </Button>
+                        )}
+                        {order.isPaid && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUpdatePaymentStatus(order.id, false)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-gray-500" />
+                        <span>{order.deliveryService?.name || 'N/A'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {order.trackingCode ? (
+                        <div className="flex min-w-[150px] items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1.5">
+                          <span className="max-w-[150px] truncate font-mono text-xs font-medium tracking-wide text-slate-700">
+                            {order.trackingCode}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => setBarcodeValue(String(order.trackingCode))}
+                            aria-label={`Open barcode for ${order.trackingCode}`}
+                            title="Open barcode"
+                          >
+                            <BarcodeIcon className="h-4 w-4 text-slate-600" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell>MAD {parseFloat(order.totalAmount.toString()).toFixed(2)}</TableCell>
+                    <TableCell>MAD {parseFloat(order.commission.toString()).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleViewOrder(order)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
 
@@ -384,6 +420,37 @@ export default function Finance() {
           order={selectedOrder}
         />
       )}
+
+      <Dialog
+        open={Boolean(barcodeValue)}
+        onOpenChange={(open) => {
+          if (!open) setBarcodeValue(null);
+        }}
+      >
+        <DialogContent className="w-[96vw] max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Tracking barcode</DialogTitle>
+          </DialogHeader>
+          {barcodeValue && (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-5 rounded-lg border border-slate-200 bg-white p-6">
+              <p className="font-mono text-base font-semibold tracking-[0.12em] text-slate-800">
+                {barcodeValue}
+              </p>
+              <div className="max-w-full overflow-x-auto rounded-md border border-slate-100 bg-white px-4 py-3">
+                <Barcode
+                  value={barcodeValue}
+                  format="CODE128"
+                  width={2}
+                  height={100}
+                  fontSize={16}
+                  margin={4}
+                  displayValue
+                />
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 } 

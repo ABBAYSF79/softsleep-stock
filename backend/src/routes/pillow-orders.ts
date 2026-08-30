@@ -49,7 +49,8 @@ router.get('/', authMiddleware, async (req, res) => {
           },
         },
       },
-      orderBy: { id: 'asc' },
+      // Show the newest accessory order number first.
+      orderBy: { id: 'desc' },
     });
 
     const formatted = orders.map((o) => ({
@@ -105,21 +106,25 @@ router.get('/pillow-stock-link', authMiddleware, adminOnly, async (req, res) => 
 
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const customerName = String(req.body?.customerName ?? '').trim();
+    const customerName = String(req.body?.customerName ?? '').trim() || 'Client';
     const phone = String(req.body?.phone ?? '').trim();
     const address = String(req.body?.address ?? '').trim();
     const city = String(req.body?.city ?? '').trim();
     const deliveryServiceIdRaw = req.body?.deliveryServiceId;
-    const deliveryServiceId = deliveryServiceIdRaw ? Number(deliveryServiceIdRaw) : undefined;
+    const hasDeliveryService = (
+      deliveryServiceIdRaw !== undefined &&
+      deliveryServiceIdRaw !== null &&
+      String(deliveryServiceIdRaw).trim() !== ''
+    );
+    const deliveryServiceId = hasDeliveryService ? Number(deliveryServiceIdRaw) : null;
     const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
     const totalAmountRaw = req.body?.totalAmount;
 
-    if (!customerName) return res.status(400).json({ error: 'Customer name is required' });
-    if (!phone) return res.status(400).json({ error: 'Phone is required' });
-    if (!address) return res.status(400).json({ error: 'Address is required' });
-    if (!city) return res.status(400).json({ error: 'City is required' });
-    if (!deliveryServiceId || Number.isNaN(deliveryServiceId)) {
-      return res.status(400).json({ error: 'Delivery service is required' });
+    if (
+      deliveryServiceId !== null &&
+      (!Number.isInteger(deliveryServiceId) || deliveryServiceId <= 0)
+    ) {
+      return res.status(400).json({ error: 'Invalid delivery service' });
     }
     if (itemsRaw.length === 0) return res.status(400).json({ error: 'At least 1 pillow item is required' });
 
@@ -162,9 +167,9 @@ router.post('/', authMiddleware, async (req, res) => {
         data: {
           userId: req.user.id,
           customerName,
-          phone,
+          phone: phone || null,
           address,
-          city,
+          city: city || null,
           deliveryServiceId,
           totalAmount: finalTotal,
           items: {

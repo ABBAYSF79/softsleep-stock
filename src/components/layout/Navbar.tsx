@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { format } from "date-fns";
-import { LogOut, UserCircle } from "lucide-react";
+import { LogOut, Menu, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +25,11 @@ function getInitials(name?: string) {
     .join("");
 }
 
-export const Navbar = () => {
+interface NavbarProps {
+  onMobileMenu: () => void;
+}
+
+export const Navbar = ({ onMobileMenu }: NavbarProps) => {
   const { user, logout } = useAuth();
   const location = useLocation();
 
@@ -38,13 +42,24 @@ export const Navbar = () => {
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-gray-200/80 bg-white/95 px-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-6">
-      <div className="min-w-0">
-        <h1 className="truncate text-base font-semibold tracking-tight text-gray-900 sm:text-lg">
-          {pageTitle}
-        </h1>
-        <p className="hidden truncate text-xs text-muted-foreground sm:block">
-          {pageTitle === APP_NAME ? APP_NAME : `${APP_NAME} · ${todayLabel}`}
-        </p>
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onMobileMenu}
+          className="h-9 w-9 shrink-0 px-0 md:hidden"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold tracking-tight text-gray-900 sm:text-lg">
+            {pageTitle}
+          </h1>
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">
+            {pageTitle === APP_NAME ? APP_NAME : `${APP_NAME} · ${todayLabel}`}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">

@@ -142,20 +142,15 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
     if (isPending) return;
 
     const payload: any = {
-      customerName: customerName.trim(),
+      customerName: customerName.trim() || "Client",
       phone: phone.trim(),
       address: address.trim(),
       city: city.trim(),
-      deliveryServiceId: Number(deliveryServiceId),
+      ...(deliveryServiceId ? { deliveryServiceId: Number(deliveryServiceId) } : {}),
       items: items.map((i) => ({ pillowId: i.pillowId, quantity: i.quantity })),
     };
     if (canOverrideTotal && manualTotalNumber !== null) payload.totalAmount = manualTotalNumber;
 
-    if (!payload.customerName) return;
-    if (!payload.phone) return;
-    if (!payload.address) return;
-    if (!payload.city) return;
-    if (!Number.isInteger(payload.deliveryServiceId)) return;
     if (payload.items.length === 0) return;
 
     createOrder(payload, { onSuccess: () => onOpenChange(false) });
@@ -163,25 +158,31 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[760px]">
+      <DialogContent className="flex h-[90vh] max-h-[90vh] flex-col overflow-hidden sm:max-w-[760px]">
         <DialogHeader>
           <DialogTitle>Create Accessoires Order</DialogTitle>
           <DialogDescription>Separate order flow for accessoires only.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6 py-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+            <div className="grid gap-6 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="po-name">Nom</Label>
-                <Input id="po-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
+                <Label htmlFor="po-name">Nom <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <Input
+                  id="po-name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Client"
+                />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="po-phone">Téléphone</Label>
-                <Input id="po-phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+                <Label htmlFor="po-phone">Téléphone <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <Input id="po-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
               <div className="grid gap-2">
-                <Label>Ville</Label>
+                <Label>Ville <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
                 <SearchableSelect
                   value={city}
                   onValueChange={setCity}
@@ -192,7 +193,7 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Delivery service</Label>
+                <Label>Delivery service <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
                 <SearchableSelect
                   value={deliveryServiceId}
                   onValueChange={(value) => {
@@ -207,8 +208,8 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="po-address">Adresse</Label>
-              <Textarea id="po-address" value={address} onChange={(e) => setAddress(e.target.value)} required />
+              <Label htmlFor="po-address">Adresse <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+              <Textarea id="po-address" value={address} onChange={(e) => setAddress(e.target.value)} />
             </div>
 
             <div className="border rounded-md p-4">
@@ -283,9 +284,10 @@ export const PillowOrderDialog = ({ open, onOpenChange }: PillowOrderDialogProps
                 </div>
               )}
             </div>
+            </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

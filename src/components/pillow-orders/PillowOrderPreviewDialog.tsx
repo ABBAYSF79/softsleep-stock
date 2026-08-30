@@ -3,9 +3,11 @@ import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { Switch } from "@/components/ui/switch";
@@ -17,12 +19,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUpdatePillowOrderPaymentStatus } from "@/hooks/useApi";
+import { Printer } from "lucide-react";
 
 interface PillowOrderPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: any | null;
   onStatusChange: (status: string) => void;
+  onOpenTicket?: (order: any) => void;
   statusBusy?: boolean;
 }
 
@@ -31,6 +35,7 @@ export const PillowOrderPreviewDialog = ({
   onOpenChange,
   order,
   onStatusChange,
+  onOpenTicket,
   statusBusy,
 }: PillowOrderPreviewDialogProps) => {
   if (!order) return null;
@@ -135,6 +140,19 @@ export const PillowOrderPreviewDialog = ({
             <div className="text-lg font-bold">{formatPrice(localOrder.totalAmount)} MAD</div>
           </div>
         </div>
+        {onOpenTicket && (
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={() => onOpenTicket(localOrder)}
+            >
+              <Printer className="h-4 w-4" />
+              Ticket PDF / Print
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

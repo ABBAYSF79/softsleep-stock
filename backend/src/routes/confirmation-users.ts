@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import { OrderStatus, PrismaClient, UserRole } from "@prisma/client";
 import { authMiddleware, adminOnly } from "../middleware/auth";
 
 const router = Router();
@@ -82,6 +82,53 @@ router.get("/my-team", authMiddleware, async (req, res) => {
     res.json(confirmationUsers);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch confirmation users" });
+  }
+});
+
+// Get monthly delivered-order progress for the visible confirmation team
+router.get("/progress", authMiddleware, async (req, res) => {
+  try {
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const confirmationUserWhere =
+      req.user.role === UserRole.SALES
+        ? { salesmanId: req.user.id }
+        : undefined;
+
+    const deliveredOrders = await prisma.order.groupBy({
+      by: ["confirmationUserId"],
+      where: {
+        confirmationUserId: { not: null },
+        status: OrderStatus.DELIVERED,
+        createdAt: {
+          gte: periodStart,
+          lt: periodEnd,
+        },
+        ...(confirmationUserWhere
+          ? { confirmationUser: confirmationUserWhere }
+          : {}),
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    res.json({
+      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      objective: 50,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      users: deliveredOrders
+        .filter((row) => row.confirmationUserId !== null)
+        .map((row) => ({
+          confirmationUserId: row.confirmationUserId,
+          deliveredCount: row._count.id,
+        })),
+    });
+  } catch (error) {
+    console.error("Error fetching confirmation user progress:", error);
+    res.status(500).json({ error: "Failed to fetch confirmation user progress" });
   }
 });
 
@@ -224,11 +271,11 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Check if user owns this confirmation user
+    // Admins can delete any confirmation user; other users can delete only their own.
     const existingUser = await prisma.confirmationUser.findFirst({
       where: {
         id: parseInt(id),
-        salesmanId: userId
+        ...(req.user.role === "ADMIN" ? {} : { salesmanId: userId })
       }
     });
 

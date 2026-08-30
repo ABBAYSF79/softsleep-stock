@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -11,10 +11,17 @@ import {
 
 export interface SidebarProps {
   collapsed: boolean;
+  mobileOpen: boolean;
   onToggle: () => void;
+  onMobileClose: () => void;
 }
 
-export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
+export const Sidebar = ({
+  collapsed,
+  mobileOpen,
+  onToggle,
+  onMobileClose,
+}: SidebarProps) => {
   const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
@@ -26,8 +33,9 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
   return (
     <aside
       className={cn(
-        "fixed top-0 left-0 z-50 flex h-full flex-col border-r border-gray-200/80 bg-white shadow-sm transition-all duration-300",
-        collapsed ? "w-[4.5rem]" : "w-64"
+        "fixed top-0 left-0 z-50 flex h-full w-64 flex-col border-r border-gray-200/80 bg-white shadow-sm transition-all duration-300",
+        collapsed ? "md:w-[4.5rem]" : "md:w-64",
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}
     >
       {/* Brand */}
@@ -38,7 +46,11 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
         )}
       >
         {!collapsed ? (
-          <Link to={homePath} className="flex min-w-0 items-center gap-2.5">
+          <Link
+            to={homePath}
+            onClick={onMobileClose}
+            className="flex min-w-0 items-center gap-2.5"
+          >
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-matles-700 text-sm font-bold text-white shadow-sm">
               MS
             </div>
@@ -52,6 +64,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
         ) : (
           <Link
             to={homePath}
+            onClick={onMobileClose}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-matles-700 text-sm font-bold text-white shadow-sm"
             title={APP_NAME}
           >
@@ -63,16 +76,24 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
           <button
             type="button"
             onClick={onToggle}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-gray-100 hover:text-gray-900"
+            className="hidden rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-gray-100 hover:text-gray-900 md:block"
             aria-label="Collapse sidebar"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
         )}
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-gray-100 hover:text-gray-900 md:hidden"
+          aria-label="Close navigation menu"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {collapsed && (
-        <div className="flex justify-center border-b border-gray-200/80 py-2">
+        <div className="hidden justify-center border-b border-gray-200/80 py-2 md:flex">
           <button
             type="button"
             onClick={onToggle}
@@ -106,6 +127,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
                     <li key={item.path}>
                       <Link
                         to={item.path}
+                        onClick={onMobileClose}
                         title={collapsed ? item.title : undefined}
                         className={cn(
                           "group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-all duration-150",

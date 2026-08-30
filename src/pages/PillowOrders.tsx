@@ -12,11 +12,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, LineChart, Package, Plus, RefreshCw, Search } from "lucide-react";
+import { Eye, LineChart, Package, Plus, Printer, RefreshCw, Search } from "lucide-react";
 import { ORDER_STATUSES, formatPrice } from "@/utils/order-utils";
 import { usePaginatedPillowOrders, useUpdatePillowOrderStatus } from "@/hooks/useApi";
 import { PillowOrderDialog } from "@/components/pillow-orders/PillowOrderDialog";
 import { PillowOrderPreviewDialog } from "@/components/pillow-orders/PillowOrderPreviewDialog";
+import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +51,7 @@ const PillowOrders = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewOrder, setPreviewOrder] = useState<any>(null);
+  const [ticketOrder, setTicketOrder] = useState<any>(null);
   const [isStockUnlockOpen, setIsStockUnlockOpen] = useState(false);
   const [stockCode, setStockCode] = useState("");
   const [isStockUnlocking, setIsStockUnlocking] = useState(false);
@@ -98,6 +100,15 @@ const PillowOrders = () => {
     return items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
   };
 
+  const openTicket = (order: any) => {
+    setIsPreviewOpen(false);
+    setTicketOrder({
+      ...order,
+      items: [],
+      pillowItems: Array.isArray(order?.items) ? order.items : [],
+    });
+  };
+
   const totalItems = meta?.total ?? filtered.length;
   const totalPages = meta?.totalPages ?? 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -105,17 +116,17 @@ const PillowOrders = () => {
 
   return (
     <MainLayout>
-      <div className="flex justify-between items-center mb-6">
-        <div>
+      <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Accessoires Orders</h1>
           <div className="text-sm text-gray-500">Orders for accessoires only (separate from mattress orders)</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {isAdmin && (
             <Button
               variant="outline"
               onClick={() => setIsStockUnlockOpen(true)}
-              className="gap-2"
+              className="flex-1 gap-2 sm:flex-none"
             >
               <Package className="h-4 w-4" />
               Accessoires Stock
@@ -125,26 +136,26 @@ const PillowOrders = () => {
             <Button
               variant="outline"
               onClick={() => navigate("/pillow-stock-analytics")}
-              className="gap-2"
+              className="flex-1 gap-2 sm:flex-none"
             >
               <LineChart className="h-4 w-4" />
               Analytics
             </Button>
           )}
-          <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} className="gap-2">
+          <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} className="flex-1 gap-2 sm:flex-none">
             <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2 bg-matles-600 hover:bg-matles-700">
+          <Button onClick={() => setIsCreateOpen(true)} className="flex-1 gap-2 bg-matles-600 hover:bg-matles-700 sm:flex-none">
             <Plus className="h-4 w-4" />
             Create Order
           </Button>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1">
+      <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Search name / phone / city..."
@@ -155,7 +166,110 @@ const PillowOrders = () => {
           </div>
         </div>
 
-        <Table>
+        <div className="space-y-3 md:hidden">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          ) : isLoading ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-gray-500">
+              Loading...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-300 px-3 py-8 text-center text-sm text-gray-500">
+              No accessoires orders found.
+            </div>
+          ) : (
+            filtered.map((o: any) => (
+              <article key={o.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-matles-700">
+                      Order #{o.id}
+                    </p>
+                    <p className="mt-1 truncate text-base font-semibold text-slate-900">
+                      {o.customerName || "Client"}
+                    </p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" disabled={isUpdating} className="shrink-0">
+                        {getStatusBadge(o.status)}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {Object.values(ORDER_STATUSES).map((s) => (
+                        <DropdownMenuItem
+                          key={s.value}
+                          onSelect={() => {
+                            if (!isUpdating) updateStatus({ id: o.id, status: s.value });
+                          }}
+                        >
+                          {s.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 border-y border-slate-100 py-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="truncate text-slate-700">{o.phone || "—"}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">City</p>
+                    <p className="truncate text-slate-700">{o.city || "—"}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Items</p>
+                    <p className="text-slate-700">{getItemsCount(o.items)}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Created</p>
+                    <p className="truncate text-slate-700">
+                      {o.createdAt ? format(new Date(o.createdAt), "dd/MM/yy HH:mm") : "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="text-sm text-slate-500">Total</span>
+                  <span className="font-semibold tabular-nums text-slate-900">
+                    {formatPrice(o.totalAmount)} MAD
+                  </span>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => {
+                      setPreviewOrder(o);
+                      setIsPreviewOpen(true);
+                    }}
+                  >
+                    <Eye className="h-4 w-4" />
+                    View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => openTicket(o)}
+                  >
+                    <Printer className="h-4 w-4" />
+                    Ticket
+                  </Button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+        <Table className="min-w-[1050px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[80px]">N°</TableHead>
@@ -230,22 +344,34 @@ const PillowOrders = () => {
                     {o.createdAt ? format(new Date(o.createdAt), "dd/MM/yy HH:mm") : "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setPreviewOrder(o);
-                        setIsPreviewOpen(true);
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setPreviewOrder(o);
+                          setIsPreviewOpen(true);
+                        }}
+                        aria-label={`View order ${o.id}`}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openTicket(o)}
+                        aria-label={`Print ticket for order ${o.id}`}
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
+        </div>
 
         <PaginationControls
           currentPage={currentPage}
@@ -268,10 +394,17 @@ const PillowOrders = () => {
         onOpenChange={setIsPreviewOpen}
         order={previewOrder}
         statusBusy={isUpdating}
+        onOpenTicket={openTicket}
         onStatusChange={(status) => {
           if (!previewOrder) return;
           updateStatus({ id: previewOrder.id, status });
         }}
+      />
+      <OrderTicketDialog
+        open={Boolean(ticketOrder)}
+        onOpenChange={(open) => !open && setTicketOrder(null)}
+        order={ticketOrder}
+        requireInProcessTracking={false}
       />
 
       <Dialog open={isStockUnlockOpen} onOpenChange={(open) => !isStockUnlocking && setIsStockUnlockOpen(open)}>

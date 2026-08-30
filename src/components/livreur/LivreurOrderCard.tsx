@@ -115,6 +115,15 @@ export const LivreurOrderCard = ({
             {order.deliveryService?.name && (
               <p className="text-xs text-muted-foreground">{order.deliveryService.name}</p>
             )}
+            {order.note?.trim() && (
+              <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
+                <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-600" />
+                <p className="line-clamp-2">
+                  <span className="font-semibold text-blue-700">Note commercial: </span>
+                  {order.note}
+                </p>
+              </div>
+            )}
             {order.livreurNote?.trim() && (
               <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
                 <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0" />

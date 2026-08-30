@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { format, subDays } from "date-fns";
 import { DateRange } from "react-day-picker";
 import {
+  Activity,
   Search,
+  SlidersHorizontal,
   ShoppingCart,
   DollarSign,
   Clock,
@@ -11,6 +13,7 @@ import {
   RotateCcw,
   Loader2,
   Users,
+  Target,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -43,9 +46,11 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   useConfirmationUsers,
+  useConfirmationUserProgress,
   useOrders,
   useProducts,
 } from "@/hooks/useApi";
+import { ConfirmationObjectiveDialog } from "@/components/users/ConfirmationObjectiveDialog";
 import { ORDER_STATUSES } from "@/utils/order-utils";
 import {
   applyClientSideOrderFilters,
@@ -83,6 +88,7 @@ const TeamOverview2 = () => {
   const [draftFilters, setDraftFilters] = useState(createDefaultOverviewFilters);
   const [appliedFilters, setAppliedFilters] = useState(createDefaultOverviewFilters);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isObjectiveDialogOpen, setIsObjectiveDialogOpen] = useState(false);
 
   const apiOrderFilters = useMemo(
     () => buildApiOrderFilters(appliedFilters),
@@ -118,6 +124,11 @@ const TeamOverview2 = () => {
   const { data: products = [] } = useProducts();
   const { data: confirmationUsers = [], isLoading: isLoadingConfirmationUsers } =
     useConfirmationUsers();
+  const {
+    data: objectiveProgress,
+    isLoading: isLoadingObjectiveProgress,
+    isError: isObjectiveProgressError,
+  } = useConfirmationUserProgress({ enabled: isObjectiveDialogOpen });
   const {
     data: rawOrders = [],
     isLoading: isLoadingOrders,
@@ -236,23 +247,62 @@ const TeamOverview2 = () => {
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-            Team Overview 2
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Orders for {periodLabel} — set filters then click Apply
-          </p>
+        <div className="relative flex flex-col gap-3 overflow-hidden rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="absolute inset-y-0 left-0 w-1 bg-matles-600" />
+          <div className="min-w-0 pl-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-matles-50 text-matles-700 ring-1 ring-inset ring-matles-100">
+                <Activity className="h-4 w-4" />
+              </div>
+              <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900">
+                Team Overview
+              </h1>
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 sm:inline-flex">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                </span>
+                Live
+              </span>
+            </div>
+            <p className="mt-1 pl-9 text-sm text-slate-500">
+              Orders for <span className="font-medium text-slate-700">{periodLabel}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span className="font-semibold tabular-nums text-slate-700">
+                {stats.totalOrders}
+              </span>{" "}
+              results
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsObjectiveDialogOpen(true)}
+            className="h-9 shrink-0 self-start border-slate-200 text-slate-700 hover:border-matles-300 hover:bg-matles-50 sm:self-auto"
+          >
+            <Target className="mr-2 h-4 w-4 text-matles-600" aria-hidden="true" />
+            <span className="hidden sm:inline">Track objectives</span>
+            <span className="sm:hidden">Objectives</span>
+          </Button>
         </div>
 
-        <Card className="border-gray-200 shadow-sm">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-medium">Filters</CardTitle>
-            <CardDescription>
-              Choose filters, then click Apply to load matching orders
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="px-4 pb-3 pt-4 sm:px-5">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-matles-600" />
+              <CardTitle className="text-base font-medium">Filters</CardTitle>
+              {filtersPending && (
+                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                  Changes pending
+                </Badge>
+              )}
+            </div>
+            <CardDescription className="text-xs">
+              Select a view, then apply the filters to refresh the results.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 px-4 pb-4 sm:px-5">
             <form
               className="space-y-3"
               onSubmit={(e) => {
@@ -265,7 +315,7 @@ const TeamOverview2 = () => {
                 <Label htmlFor="team-overview-search" className="sr-only">
                   Search orders
                 </Label>
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   id="team-overview-search"
                   name="search"
@@ -277,7 +327,7 @@ const TeamOverview2 = () => {
                       searchTerm: e.target.value,
                     }))
                   }
-                  className="pl-9"
+                  className="h-9 rounded-lg border-slate-200 bg-slate-50/70 pl-9 text-sm shadow-inner shadow-slate-200/30 transition-colors placeholder:text-slate-400 focus:bg-white focus-visible:border-matles-300 focus-visible:ring-matles-200"
                 />
               </div>
 
@@ -290,7 +340,7 @@ const TeamOverview2 = () => {
                 onValueChange={handleDateFilterChange}
                 name="dateFilter"
               >
-                <SelectTrigger id="team-overview-date">
+                <SelectTrigger id="team-overview-date" className="h-9 border-slate-200 text-sm">
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -338,6 +388,7 @@ const TeamOverview2 = () => {
                 placeholder="Confirmation user"
                 searchPlaceholder="Search users..."
                 emptyMessage="No confirmation user found."
+                className="h-9 border-slate-200 text-sm"
               />
               </div>
 
@@ -360,6 +411,7 @@ const TeamOverview2 = () => {
                 placeholder="Product"
                 searchPlaceholder="Search products..."
                 emptyMessage="No product found."
+                className="h-9 border-slate-200 text-sm"
               />
               </div>
 
@@ -374,7 +426,7 @@ const TeamOverview2 = () => {
                 }
                 name="status"
               >
-                <SelectTrigger id="team-overview-status">
+                <SelectTrigger id="team-overview-status" className="h-9 border-slate-200 text-sm">
                   <SelectValue placeholder="Order status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -390,7 +442,11 @@ const TeamOverview2 = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" disabled={isFetchingOrders}>
+              <Button
+                type="submit"
+                disabled={isFetchingOrders}
+                className="h-9 bg-matles-600 hover:bg-matles-700"
+              >
                 {isFetchingOrders ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
@@ -398,20 +454,20 @@ const TeamOverview2 = () => {
                 )}
                 Apply filters
               </Button>
-              <Button type="button" variant="outline" onClick={handleResetFilters}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleResetFilters}
+                className="h-9 border-slate-200"
+              >
                 Reset
               </Button>
-              {filtersPending && (
-                <span className="text-sm text-amber-600">
-                  Filters changed — click Apply to update results
-                </span>
-              )}
             </div>
             </form>
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <StatCard
             label="Total orders"
             value={stats.totalOrders}
@@ -451,14 +507,14 @@ const TeamOverview2 = () => {
         </div>
 
         <Card
-          className={`border-gray-200 shadow-sm transition-opacity ${
+          className={`overflow-hidden border-slate-200 shadow-sm transition-opacity ${
             isFetchingOrders ? "opacity-70" : ""
           }`}
         >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-slate-100 px-4 py-3 sm:px-5">
             <div>
-              <CardTitle className="text-base font-medium">Orders</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-base font-medium text-slate-900">Orders</CardTitle>
+              <CardDescription className="text-xs">
                 {stats.totalOrders} result{stats.totalOrders !== 1 ? "s" : ""} for{" "}
                 {periodLabel}
               </CardDescription>
@@ -468,9 +524,65 @@ const TeamOverview2 = () => {
             )}
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+            <div className="space-y-2 p-3 md:hidden">
+              {paginatedOrders.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No orders match the current filters.
+                </div>
+              ) : (
+                paginatedOrders.map((order) => (
+                  <article
+                    key={order.id}
+                    className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold tabular-nums text-matles-700">
+                          #{order.id}
+                        </p>
+                        <p className="truncate font-medium text-slate-900">
+                          {order.customerName}
+                        </p>
+                        {order.phone && (
+                          <p className="truncate text-xs text-slate-500">{order.phone}</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 whitespace-nowrap">
+                        {getStatusBadge(order.status)}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 border-y border-slate-100 py-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-500">Confirmation</p>
+                        <p className="truncate text-slate-700">
+                          {order.confirmationUser?.name || "—"}
+                        </p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-500">Date</p>
+                        <p className="truncate text-slate-700">
+                          {format(new Date(order.createdAt), "dd MMM yyyy")}
+                        </p>
+                      </div>
+                      <div className="col-span-2 min-w-0">
+                        <p className="text-xs text-slate-500">Product</p>
+                        <p className="truncate text-slate-700">{formatProducts(order)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Amount</span>
+                      <span className="font-semibold tabular-nums text-slate-900">
+                        {Number(order.totalAmount).toFixed(2)} MAD
+                      </span>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <Table className="text-[13px] text-slate-700">
+                <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur [&_th]:tracking-[0.06em]">
                   <TableRow className="bg-gray-50/80 hover:bg-gray-50/80">
                     <TableHead className="font-medium">Order</TableHead>
                     <TableHead className="font-medium">Customer</TableHead>
@@ -493,8 +605,11 @@ const TeamOverview2 = () => {
                     </TableRow>
                   ) : (
                     paginatedOrders.map((order) => (
-                      <TableRow key={order.id} className="hover:bg-gray-50/50">
-                        <TableCell className="font-medium text-matles-700">
+                      <TableRow
+                        key={order.id}
+                        className="border-slate-100 transition-colors even:bg-slate-50/30 hover:bg-matles-50/35"
+                      >
+                        <TableCell className="font-medium tabular-nums text-matles-700">
                           #{order.id}
                         </TableCell>
                         <TableCell>
@@ -523,7 +638,9 @@ const TeamOverview2 = () => {
                         <TableCell className="text-right font-medium">
                           {Number(order.totalAmount).toFixed(2)} MAD
                         </TableCell>
-                        <TableCell>{getStatusBadge(order.status)}</TableCell>
+                        <TableCell>
+                          <div className="whitespace-nowrap">{getStatusBadge(order.status)}</div>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -532,7 +649,7 @@ const TeamOverview2 = () => {
             </div>
 
             {orders.length > ITEMS_PER_PAGE && (
-              <div className="flex items-center justify-between border-t px-6 py-4">
+              <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
                 <span className="text-sm text-muted-foreground">
                   Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
                   {Math.min(currentPage * ITEMS_PER_PAGE, orders.length)} of{" "}
@@ -566,6 +683,15 @@ const TeamOverview2 = () => {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmationObjectiveDialog
+        open={isObjectiveDialogOpen}
+        onOpenChange={setIsObjectiveDialogOpen}
+        users={confirmationUsers}
+        progressData={objectiveProgress}
+        isLoading={isLoadingObjectiveProgress}
+        isError={isObjectiveProgressError}
+      />
     </MainLayout>
   );
 };
@@ -583,18 +709,22 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`border-gray-200 shadow-sm ${
-        highlight ? "border-matles-200 bg-matles-50/40" : ""
+      className={`group overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+        highlight
+          ? "border-matles-200 bg-matles-50/50 ring-1 ring-inset ring-matles-100/70"
+          : ""
       }`}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="min-w-0 text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500">
             {label}
           </p>
-          {icon}
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-50 ring-1 ring-inset ring-slate-100 transition-colors group-hover:bg-white">
+            {icon}
+          </div>
         </div>
-        <p className="mt-2 text-xl font-semibold tabular-nums text-gray-900">
+        <p className="mt-1.5 text-lg font-semibold tabular-nums tracking-tight text-slate-900 sm:text-xl">
           {value}
         </p>
       </CardContent>

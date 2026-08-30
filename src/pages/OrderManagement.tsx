@@ -39,7 +39,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDeleteOrder, usePaginatedOrders, useUsers } from "@/hooks/useApi";
+import {
+  useDeleteOrder,
+  useDeliveryServices,
+  usePaginatedOrders,
+  useUsers,
+} from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
@@ -47,7 +52,7 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MessageSquare, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
+import { Activity, BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MessageSquare, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 
@@ -77,6 +82,7 @@ const OrderManagement = () => {
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [salesmanIdFilter, setSalesmanIdFilter] = useState<string>("all");
+  const [deliveryServiceIdFilter, setDeliveryServiceIdFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("last3months");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
@@ -129,19 +135,30 @@ const OrderManagement = () => {
     return {};
   }, [dateFilter, customDateRange]);
 
+  const { data: deliveryServices = [] } = useDeliveryServices();
+
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (searchQuery.trim()) count += 1;
     if (statusFilter !== "all") count += 1;
     if (isAdmin && salesmanIdFilter !== "all") count += 1;
+    if (deliveryServiceIdFilter !== "all") count += 1;
     if (dateFilter !== "last3months") count += 1;
     return count;
-  }, [searchQuery, statusFilter, isAdmin, salesmanIdFilter, dateFilter]);
+  }, [
+    searchQuery,
+    statusFilter,
+    isAdmin,
+    salesmanIdFilter,
+    deliveryServiceIdFilter,
+    dateFilter,
+  ]);
 
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
     setSalesmanIdFilter("all");
+    setDeliveryServiceIdFilter("all");
     setDateFilter("last3months");
     setCustomDateRange(undefined);
   };
@@ -153,6 +170,7 @@ const OrderManagement = () => {
       status: statusFilter,
       search: debouncedSearch,
       ...(isAdmin && salesmanIdFilter !== "all" ? { salesmanId: salesmanIdFilter } : {}),
+      ...(deliveryServiceIdFilter !== "all" ? { deliveryServiceId: deliveryServiceIdFilter } : {}),
       ...dateParams,
     }),
     [
@@ -162,6 +180,7 @@ const OrderManagement = () => {
       statusFilter,
       isAdmin,
       salesmanIdFilter,
+      deliveryServiceIdFilter,
       dateParams,
     ]
   );
@@ -335,11 +354,28 @@ const OrderManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, salesmanIdFilter, dateFilter, dateParams]);
+  }, [
+    searchQuery,
+    statusFilter,
+    salesmanIdFilter,
+    deliveryServiceIdFilter,
+    dateFilter,
+    dateParams,
+  ]);
 
   useEffect(() => {
     clearSelection();
-  }, [currentPage, itemsPerPage, searchQuery, statusFilter, salesmanIdFilter, dateFilter, dateParams, clearSelection]);
+  }, [
+    currentPage,
+    itemsPerPage,
+    searchQuery,
+    statusFilter,
+    salesmanIdFilter,
+    deliveryServiceIdFilter,
+    dateFilter,
+    dateParams,
+    clearSelection,
+  ]);
 
   const pageRowIds = useMemo(() => orders.map((o: any) => Number(o.id)).filter((n: number) => Number.isFinite(n)), [orders]);
 
@@ -388,17 +424,34 @@ const OrderManagement = () => {
     <MainLayout>
       <div className={selectedIds.size ? "space-y-4 pb-24" : "space-y-4"}>
         {/* Page header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-gray-900">
-              Order Management
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {meta.total.toLocaleString()} order{meta.total !== 1 ? "s" : ""}
-              {isLivreur || isSuivi ? " · assigned delivery services" : " · create, review & manage"}
+        <div className="relative flex flex-col gap-3 overflow-hidden rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="absolute inset-y-0 left-0 w-1 bg-matles-600" />
+          <div className="min-w-0 pl-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-matles-50 text-matles-700 ring-1 ring-inset ring-matles-100">
+                <Activity className="h-4 w-4" />
+              </div>
+              <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900">
+                Order Management
+              </h1>
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 sm:inline-flex">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                </span>
+                Live
+              </span>
+            </div>
+            <p className="mt-1 pl-9 text-sm text-slate-500">
+              <span className="font-semibold tabular-nums text-slate-700">
+                {meta.total.toLocaleString()}
+              </span>{" "}
+              order{meta.total !== 1 ? "s" : ""}
+              <span className="mx-1.5 text-slate-300">·</span>
+              {isLivreur || isSuivi ? "Assigned delivery services" : "Create, review & manage"}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -419,20 +472,35 @@ const OrderManagement = () => {
         </div>
 
         {/* Compact filter toolbar */}
-        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <div className="group relative min-w-0 w-full flex-1 sm:w-44 sm:flex-none">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-matles-600" />
               <Input
+                type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSearchQuery("");
+                }}
                 placeholder="Search orders..."
-                className="h-8 pl-8 text-sm"
+                aria-label="Search orders by customer, phone, city, or order number"
+                className="h-9 rounded-lg border-slate-200 bg-slate-50/70 pl-9 pr-9 text-sm shadow-inner shadow-slate-200/30 transition-colors placeholder:text-slate-400 focus:bg-white focus-visible:border-matles-300 focus-visible:ring-matles-200"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-matles-300"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-8 w-[120px] text-sm">
+              <SelectTrigger className="h-8 w-full text-sm sm:w-44">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -458,12 +526,29 @@ const OrderManagement = () => {
                 ]}
                 placeholder="Salesman"
                 searchPlaceholder="Search..."
-                className="h-8 w-[140px] text-sm"
+                className="h-8 w-full text-sm sm:w-44"
               />
             )}
 
+            <SearchableSelect
+              value={deliveryServiceIdFilter}
+              onValueChange={(value) => setDeliveryServiceIdFilter(value || "all")}
+              options={[
+                { label: "All delivery services", value: "all" },
+                ...(Array.isArray(deliveryServices)
+                  ? deliveryServices.map((service: any) => ({
+                      label: service.name,
+                      value: String(service.id),
+                    }))
+                  : []),
+              ]}
+              placeholder="Delivery service"
+              searchPlaceholder="Search service..."
+              className="h-8 w-full text-sm sm:w-44"
+            />
+
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="h-8 w-[130px] text-sm">
+              <SelectTrigger className="h-8 w-full text-sm sm:w-44">
                 <SelectValue placeholder="Date" />
               </SelectTrigger>
               <SelectContent>
@@ -503,9 +588,38 @@ const OrderManagement = () => {
         {/* Orders table */}
         <Card className="overflow-hidden border-gray-200 shadow-sm">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+            <div className="space-y-3 p-3 md:hidden">
+              {orders.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No orders match your filters.
+                </div>
+              ) : (
+                orders.map((order) => (
+                  <OrderMobileCard
+                    key={order.id}
+                    order={order}
+                    isAdmin={isAdmin}
+                    isLivreur={isLivreur}
+                    isSuivi={isSuivi}
+                    isSelected={selectedIds.has(Number(order.id))}
+                    onRowClick={handleViewOrder}
+                    onToggleSelected={handleToggleSelected}
+                    onCopyPhone={copyToClipboard}
+                    onCopyTracking={copyToClipboard}
+                    onOpenBarcode={handleOpenBarcode}
+                    onPrintOrder={handlePrintOrder}
+                    onOpenGuarantee={handleOpenGuarantee}
+                    onNavigateAdvanced={handleNavigateAdvanced}
+                    onDelete={handleDeleteClick}
+                    onCopyOrderInfo={handleCopyOrderInfo}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <Table className="text-[13px] text-slate-700">
+                <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur [&_th]:tracking-[0.06em]">
                   <TableRow className="border-b border-gray-200 bg-gray-50/90 hover:bg-gray-50/90">
                     <TableHead className="h-10 w-10 px-3">
                       {!isLivreur && !isSuivi && (
@@ -528,22 +642,19 @@ const OrderManagement = () => {
                       Customer
                     </TableHead>
                     <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Phone
+                      City
                     </TableHead>
                     <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Delivery
-                    </TableHead>
-                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      City / Tracking
+                      Status
                     </TableHead>
                     <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Date
                     </TableHead>
                     <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
+                      Price
                     </TableHead>
-                    <TableHead className="h-10 px-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total
+                    <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Product
                     </TableHead>
                     <TableHead className="h-10 w-[120px] px-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Actions
@@ -554,7 +665,7 @@ const OrderManagement = () => {
                   {orders.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={10}
+                        colSpan={9}
                         className="py-16 text-center text-sm text-muted-foreground"
                       >
                         No orders match your filters.
@@ -736,6 +847,216 @@ type OrderRowProps = {
   onCopyOrderInfo: (order: any) => void;
 };
 
+const OrderMobileCard = memo(function OrderMobileCard({
+  order,
+  isAdmin,
+  isLivreur,
+  isSuivi,
+  isSelected,
+  onRowClick,
+  onToggleSelected,
+  onCopyPhone,
+  onCopyTracking,
+  onOpenBarcode,
+  onPrintOrder,
+  onOpenGuarantee,
+  onNavigateAdvanced,
+  onDelete,
+  onCopyOrderInfo,
+}: OrderRowProps) {
+  const orderItems = Array.isArray(order.items) ? order.items : [];
+
+  return (
+    <article
+      className={`rounded-lg border bg-white p-3 shadow-sm ${
+        isSelected ? "border-matles-300 bg-matles-50/40" : "border-gray-200"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          {!isLivreur && !isSuivi && (
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelected(Number(order.id))}
+              aria-label={`Select order ${order.id}`}
+              className="mt-1 shrink-0"
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => onRowClick(order)}
+            className="min-w-0 text-left"
+          >
+            <span className="block font-semibold tabular-nums text-matles-700">
+              #{order.id}
+            </span>
+            <span className="block truncate font-medium text-gray-900">
+              {order.customerName || "Unknown customer"}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-gray-100 py-3 text-sm">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">Phone</p>
+          {order.phone ? (
+            <button
+              type="button"
+              onClick={() => onCopyPhone(String(order.phone).trim())}
+              className="max-w-full truncate text-left tabular-nums text-matles-600 hover:underline"
+            >
+              {order.phone}
+            </button>
+          ) : (
+            <p className="text-gray-700">—</p>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">Date</p>
+          <p className="truncate text-gray-700">
+            {format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")}
+          </p>
+        </div>
+        <div className="col-span-2 min-w-0">
+          <p className="text-xs text-muted-foreground">City</p>
+          <p className="truncate text-sm font-medium text-gray-800">
+            {order.deliveryService?.name || "—"}
+          </p>
+          <p className="truncate text-gray-700">{order.city || "—"}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground">Status</span>
+        <div className="whitespace-nowrap">
+          <OrderStatusBadge status={order.status} />
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-2 rounded-md bg-gray-50 px-2.5 py-2">
+        <p className="text-xs text-muted-foreground">Product</p>
+        {orderItems.length > 0 ? (
+          orderItems.map((item: any, index: number) => (
+            <div key={`${item.variantId ?? "item"}-${index}`} className="min-w-0">
+              <p className="truncate text-sm font-medium text-gray-900">
+                {getProductName(item)}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {formatVariantDetails(item)}
+                {Number(item.quantity) > 1 ? ` · Qty ${item.quantity}` : ""}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-gray-700">—</p>
+        )}
+      </div>
+
+      {typeof order.note === "string" && order.note.trim() && (
+        <div
+          className="mt-3 flex min-w-0 items-center gap-1 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-snug text-amber-950 ring-1 ring-inset ring-amber-200/70"
+          title={order.note.trim()}
+        >
+          <MessageSquare className="h-3 w-3 shrink-0 text-amber-600" aria-hidden />
+          <span className="truncate">{order.note.trim()}</span>
+        </div>
+      )}
+
+      {order.trackingCode && (
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-md bg-gray-50 px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => onCopyTracking(order.trackingCode)}
+            className="min-w-0 truncate text-left text-xs tabular-nums text-muted-foreground hover:text-foreground"
+            title={order.trackingCode}
+          >
+            Tracking: {order.trackingCode}
+          </button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => onOpenBarcode(order.trackingCode)}
+            aria-label="Generate barcode"
+            title="Generate barcode"
+          >
+            <BarcodeIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="font-semibold tabular-nums text-gray-900">
+            {formatPrice(order.totalAmount)}{" "}
+            <span className="text-xs font-normal text-muted-foreground">MAD</span>
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            aria-label="Print order ticket"
+            title="Print order ticket"
+            onClick={() => onPrintOrder(order)}
+          >
+            <Printer className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            aria-label="Open guarantee document"
+            title="Open guarantee document"
+            onClick={() => onOpenGuarantee(order)}
+          >
+            <BadgeCheck className="h-4 w-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Order actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onRowClick(order)}>
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </DropdownMenuItem>
+              {!isLivreur && (
+                <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy order info
+                </DropdownMenuItem>
+              )}
+              {isAdmin && (
+                <>
+                  <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Advanced edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onDelete(order)}
+                    className="text-red-600 focus:text-red-600"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </article>
+  );
+});
+
 const OrderRow = memo(function OrderRow({
   order,
   isAdmin,
@@ -756,8 +1077,8 @@ const OrderRow = memo(function OrderRow({
   return (
     <TableRow
       onClick={() => onRowClick(order)}
-      className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-gray-50/80 ${
-        isSelected ? "bg-matles-50/60" : ""
+      className={`group cursor-pointer border-b border-slate-100 transition-colors even:bg-slate-50/30 hover:bg-matles-50/35 ${
+        isSelected ? "bg-matles-50/70 hover:bg-matles-50/70" : ""
       }`}
       data-selected={isSelected ? "true" : "false"}
     >
@@ -773,7 +1094,21 @@ const OrderRow = memo(function OrderRow({
       </TableCell>
       <TableCell className="px-3 py-2.5">
         <div className="min-w-0 max-w-[220px]">
-          <span className="font-medium text-gray-900">{order.customerName}</span>
+          <span className="block truncate font-medium text-gray-900">{order.customerName}</span>
+          {order.phone ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCopyPhone(String(order.phone).trim());
+              }}
+              className="mt-0.5 block max-w-full truncate text-left text-sm tabular-nums text-matles-600 hover:underline"
+            >
+              {order.phone}
+            </button>
+          ) : (
+            <span className="mt-0.5 block text-sm text-muted-foreground">—</span>
+          )}
           {typeof order.note === "string" && order.note.trim() && (
             <div
               className="mt-1 flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] leading-snug text-amber-950 ring-1 ring-inset ring-amber-200/70"
@@ -785,25 +1120,14 @@ const OrderRow = memo(function OrderRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-        {order.phone ? (
-          <button
-            type="button"
-            onClick={() => onCopyPhone(String(order.phone).trim())}
-            className="text-sm tabular-nums text-matles-600 hover:underline"
-          >
-            {order.phone}
-          </button>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell className="px-3 py-2.5 text-sm text-gray-700">
-        {order.deliveryService?.name || "—"}
-      </TableCell>
       <TableCell className="px-3 py-2.5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-gray-800">{order.city || "—"}</span>
+          <span className="max-w-[180px] truncate text-sm font-medium text-gray-800">
+            {order.deliveryService?.name || "—"}
+          </span>
+          <span className="max-w-[180px] truncate text-sm text-gray-700">
+            {order.city || "—"}
+          </span>
           {order.trackingCode && (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <button
@@ -829,17 +1153,38 @@ const OrderRow = memo(function OrderRow({
           )}
         </div>
       </TableCell>
+      <TableCell className="px-3 py-2.5">
+        <div className="whitespace-nowrap">
+          <OrderStatusBadge status={order.status} />
+        </div>
+      </TableCell>
       <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-muted-foreground">
         {format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")}
-      </TableCell>
-      <TableCell className="px-3 py-2.5">
-        <OrderStatusBadge status={order.status} />
       </TableCell>
       <TableCell className="px-3 py-2.5 text-right">
         <span className="font-semibold tabular-nums text-gray-900">
           {formatPrice(order.totalAmount)}
         </span>
         <span className="ml-1 text-xs text-muted-foreground">MAD</span>
+      </TableCell>
+      <TableCell className="px-3 py-2.5">
+        <div className="min-w-[180px] max-w-[240px] space-y-1">
+          {Array.isArray(order.items) && order.items.length > 0 ? (
+            order.items.map((item: any, index: number) => (
+              <div key={`${item.variantId ?? "item"}-${index}`} className="min-w-0">
+                <p className="truncate text-sm font-medium text-gray-900">
+                  {getProductName(item)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {formatVariantDetails(item)}
+                  {Number(item.quantity) > 1 ? ` · Qty ${item.quantity}` : ""}
+                </p>
+              </div>
+            ))
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </div>
       </TableCell>
       <TableCell className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-0.5">

@@ -121,6 +121,18 @@ export const LivreurOrderSheet = ({
             )}
           </div>
 
+          {order.note?.trim() && (
+            <div className="space-y-1.5 rounded-xl border border-blue-200/80 bg-blue-50/70 p-3">
+              <Label className="flex items-center gap-1.5 text-sm font-semibold text-blue-900">
+                <MessageSquare className="h-4 w-4 text-blue-600" />
+                Note commercial
+              </Label>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-blue-900">
+                {order.note}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
             <Label htmlFor="livreur-note" className="flex items-center gap-1.5 text-sm font-semibold text-amber-950">
               <MessageSquare className="h-4 w-4" />

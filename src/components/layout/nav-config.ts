@@ -13,7 +13,6 @@ import {
   Truck,
   UserCheck,
   Users,
-  Users2,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -108,13 +107,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "analytics",
   },
   {
-    title: "Confirmation Overview",
-    path: "/confirmation-team-overview",
-    icon: Users2,
-    group: "analytics",
-  },
-  {
-    title: "Team Overview 2",
+    title: "Team Overview",
     path: "/team-overview-2",
     icon: BarChart3,
     group: "analytics",

@@ -141,6 +141,33 @@ export const useConfirmationUsers = (options?: { enabled?: boolean }) => {
   });
 };
 
+export interface ConfirmationUserProgress {
+  confirmationUserId: number;
+  deliveredCount: number;
+}
+
+export interface ConfirmationUserProgressResponse {
+  month: string;
+  objective: number;
+  periodStart: string;
+  periodEnd: string;
+  users: ConfirmationUserProgress[];
+}
+
+export const useConfirmationUserProgress = (options?: { enabled?: boolean }) => {
+  const { user } = useAuth();
+
+  return useQuery<ConfirmationUserProgressResponse>({
+    queryKey: ['confirmationUserProgress', user?.id, user?.role],
+    queryFn: async () => {
+      const { data } = await api.get('/confirmation-users/progress');
+      return data;
+    },
+    enabled: !!user && (options?.enabled ?? true),
+    ...REFERENCE_QUERY_OPTIONS,
+  });
+};
+
 export interface InvoicePayload {
   invoiceNumber: string;
   invoiceDate: string;

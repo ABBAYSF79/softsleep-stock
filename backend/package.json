@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "seed:objectives": "ts-node scripts/seed-confirmation-objectives.ts",
     "test:livreur": "ts-node scripts/test-livreur-access.ts",
     "test:suivi": "ts-node scripts/test-suivi-access.ts"
   },

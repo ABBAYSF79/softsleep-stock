@@ -198,7 +198,7 @@ const Dashboard = () => {
         {/* Row 3 — Finance (admin) */}
         {isAdmin && (
           <div>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
               <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                 Finance — delivered orders this month
               </h2>
@@ -243,11 +243,11 @@ const Dashboard = () => {
         {/* Row 4 — Leaders (admin) */}
         {isAdmin && (
           <div>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
               <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                 Top performers — by delivered orders this month
               </h2>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 sm:gap-3">
                 <Link
                   to="/sales"
                   className="text-xs font-medium text-matles-600 hover:text-matles-700"
@@ -339,13 +339,13 @@ const Dashboard = () => {
                   recentOrders.map((order) => (
                     <div
                       key={order.id}
-                      className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0"
+                      className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3 last:border-0 last:pb-0"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-medium text-gray-900">
                           Order #{order.id}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="truncate text-sm text-muted-foreground">
                           {order.customerName}
                         </p>
                         {order.status && (

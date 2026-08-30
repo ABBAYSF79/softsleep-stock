@@ -24,12 +24,12 @@ export function DashboardStatCard({
     >
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="min-w-0 text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-xs">
             {label}
           </p>
           {icon}
         </div>
-        <p className="mt-2 text-xl font-semibold tabular-nums text-gray-900">
+        <p className="mt-2 break-words text-lg font-semibold tabular-nums text-gray-900 sm:text-xl">
           {value}
         </p>
         {subtext && (

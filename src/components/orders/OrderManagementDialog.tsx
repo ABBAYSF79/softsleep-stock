@@ -526,22 +526,25 @@ export const OrderManagementDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[90vw] max-w-[90vw] max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{isViewing ? `Order #${order.id}` : "Create New Order"}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-2xl border-slate-200 p-0 sm:max-h-[90vh] sm:w-[90vw] sm:max-w-[90vw]">
+        <DialogHeader className="shrink-0 border-b border-slate-100 bg-slate-50/70 px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
+          <DialogTitle className="text-lg text-slate-900">
+            {isViewing ? `Order #${order.id}` : "Create New Order"}
+          </DialogTitle>
+          <DialogDescription className="mt-1 text-sm text-slate-500">
             {isViewing ? "View or update order details" : "Fill in the details to create a new order"}
           </DialogDescription>
         </DialogHeader>
 
-        {isViewing ? (
-          <div className="space-y-6 overflow-y-auto pr-4">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 sm:px-6">
+          {isViewing ? (
+          <div className="space-y-6 py-4 sm:py-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Order Information</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>Customer</Label>
@@ -661,7 +664,7 @@ export const OrderManagementDialog = ({
                       ) : null}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="deliveryService">Delivery Service</Label>
                         {isAdmin ? (
@@ -761,8 +764,8 @@ export const OrderManagementDialog = ({
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="overflow-hidden rounded-lg border">
-                  <div className="grid grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <div className="overflow-x-auto rounded-lg border">
+                  <div className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:min-w-0">
                     <div>Product</div>
                     <div className="text-right">Qty</div>
                     <div className="text-right">Price</div>
@@ -784,7 +787,7 @@ export const OrderManagementDialog = ({
                       return (
                         <div
                           key={`${it?.variantId ?? "v"}-${idx}`}
-                          className="grid grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm"
+                          className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm sm:min-w-0"
                         >
                           <div className="min-w-0">
                             <div className="font-medium truncate">{productName}</div>
@@ -802,8 +805,8 @@ export const OrderManagementDialog = ({
                 </div>
 
                 {pillowItems.length > 0 && (
-                  <div className="overflow-hidden rounded-lg border">
-                    <div className="grid grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <div className="overflow-x-auto rounded-lg border">
+                    <div className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:min-w-0">
                       <div>Accessoire (supplement)</div>
                       <div className="text-right">Qty</div>
                       <div className="text-right">Price</div>
@@ -819,7 +822,7 @@ export const OrderManagementDialog = ({
                       return (
                         <div
                           key={`${pi?.pillowId ?? "p"}-${idx}`}
-                          className="grid grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm"
+                          className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm sm:min-w-0"
                         >
                           <div className="min-w-0">
                             <div className="font-medium truncate">{pi?.pillowName || "-"}</div>
@@ -844,7 +847,7 @@ export const OrderManagementDialog = ({
             </Card>
           </div>
         ) : (
-          <div className="grid gap-6 overflow-y-auto pr-4 lg:grid-cols-2">
+          <div className="grid min-w-0 gap-6 py-4 sm:py-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Customer & delivery</CardTitle>
@@ -967,9 +970,9 @@ export const OrderManagementDialog = ({
                     e.preventDefault();
                     handleAddItem();
                   }}
-                  className="grid grid-cols-12 gap-3 items-end"
+                  className="grid grid-cols-1 items-end gap-3 sm:grid-cols-12"
                 >
-                  <div className="col-span-8 space-y-2">
+                  <div className="col-span-1 space-y-2 sm:col-span-8">
                     <Label>Product</Label>
                     <SearchableSelect
                       value={selectedVariant}
@@ -1000,12 +1003,12 @@ export const OrderManagementDialog = ({
                     />
                   </div>
 
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 space-y-2 sm:col-span-2">
                     <Label>Qty</Label>
                     <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
                   </div>
 
-                  <div className="col-span-2">
+                  <div className="col-span-1 sm:col-span-2">
                     <Button type="submit" className="w-full" disabled={!selectedVariant}>
                       Add
                     </Button>
@@ -1018,8 +1021,8 @@ export const OrderManagementDialog = ({
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <table className="w-full">
+                <div className="space-y-2 overflow-x-auto">
+                  <table className="w-full min-w-[480px] sm:min-w-0">
                     <tbody>
                       {orderItems.map((item, index) => (
                         <tr key={index} className="border-b">
@@ -1056,9 +1059,9 @@ export const OrderManagementDialog = ({
                       e.preventDefault();
                       handleAddPillow();
                     }}
-                    className="mt-3 grid grid-cols-12 gap-3 items-end"
+                    className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-12"
                   >
-                    <div className="col-span-8 space-y-2">
+                    <div className="col-span-1 space-y-2 sm:col-span-8">
                       <Label>Accessoire</Label>
                       <SearchableSelect
                         value={selectedPillowId}
@@ -1074,11 +1077,11 @@ export const OrderManagementDialog = ({
                         searchPlaceholder="Search accessoire..."
                       />
                     </div>
-                    <div className="col-span-2 space-y-2">
+                    <div className="col-span-1 space-y-2 sm:col-span-2">
                       <Label>Qty</Label>
                       <Input type="number" min="1" value={pillowQty} onChange={(e) => setPillowQty(parseInt(e.target.value) || 1)} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-1 sm:col-span-2">
                       <Button type="submit" className="w-full" disabled={!selectedPillowId}>
                         Add
                       </Button>
@@ -1086,8 +1089,8 @@ export const OrderManagementDialog = ({
                   </form>
 
                   {pillowItems.length > 0 && (
-                    <div className="mt-3">
-                      <table className="w-full">
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full min-w-[420px] sm:min-w-0">
                         <tbody>
                           {pillowItems.map((pi: any) => (
                             <tr key={pi.pillowId} className="border-b">
@@ -1147,9 +1150,10 @@ export const OrderManagementDialog = ({
               </CardContent>
             </Card>
           </div>
-        )}
+          )}
+        </div>
 
-        <DialogFooter className="mt-4 border-t pt-4">
+        <DialogFooter className="shrink-0 gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:px-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {isViewing ? "Close" : "Cancel"}
           </Button>

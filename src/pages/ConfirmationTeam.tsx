@@ -14,7 +14,7 @@ import {
   Search,
   Plus,
   Pencil,
-  Trash2
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -105,8 +105,14 @@ const ConfirmationTeam = () => {
           return [];
         }
         return response.data;
-      } catch (error: any) {
-        console.error("Error fetching sales users:", error.response?.data || error.message);
+      } catch (error: unknown) {
+        const details =
+          typeof error === "object" && error !== null && "response" in error
+            ? (error as { response?: { data?: unknown } }).response?.data
+            : error instanceof Error
+              ? error.message
+              : "Unknown error";
+        console.error("Error fetching sales users:", details);
         return [];
       }
     },
@@ -195,11 +201,14 @@ const ConfirmationTeam = () => {
     }
   };
 
-  const filteredUsers = Array.isArray(confirmationUsers) ? confirmationUsers.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.phone?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) : [];
+  const filteredUsers = Array.isArray(confirmationUsers)
+    ? confirmationUsers.filter(
+        (confirmationUser) =>
+          confirmationUser.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          confirmationUser.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          confirmationUser.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
 
   if (isLoading) {
     return (
@@ -214,7 +223,7 @@ const ConfirmationTeam = () => {
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Confirmation Team</h1>
           <div className="flex items-center gap-4">
             <Button onClick={() => {
@@ -249,37 +258,47 @@ const ConfirmationTeam = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers?.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.name}</TableCell>
-                <TableCell>{user.phone || '-'}</TableCell>
-                <TableCell>{user.email || '-'}</TableCell>
-                <TableCell>{user.linkedSalesUser?.name || 'Not linked'}</TableCell>
-                <TableCell>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {user.active ? 'Active' : 'Inactive'}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => handleEdit(user)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => handleDelete(user.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+            {filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  No confirmation users match your search.
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filteredUsers.map((confirmationUser) => (
+                  <TableRow key={confirmationUser.id}>
+                    <TableCell className="font-medium">{confirmationUser.name}</TableCell>
+                    <TableCell>{confirmationUser.phone || '-'}</TableCell>
+                    <TableCell>{confirmationUser.email || '-'}</TableCell>
+                    <TableCell>{confirmationUser.linkedSalesUser?.name || 'Not linked'}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        confirmationUser.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {confirmationUser.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(confirmationUser)}
+                        aria-label={`Edit ${confirmationUser.name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(confirmationUser.id)}
+                        aria-label={`Delete ${confirmationUser.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
@@ -370,6 +389,7 @@ const ConfirmationTeam = () => {
           </form>
         </DialogContent>
       </Dialog>
+
     </MainLayout>
   );
 };

@@ -43,7 +43,7 @@ export function ReturnsAnalysisSection({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
         <div>
           <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
             Returns analysis — {year}
