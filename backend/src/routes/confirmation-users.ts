@@ -85,12 +85,44 @@ router.get("/my-team", authMiddleware, async (req, res) => {
   }
 });
 
-// Get monthly delivered-order progress for the visible confirmation team
+// Get delivered-order progress for the visible confirmation team
+// Optional query: from, to (ISO), confirmationUserId
 router.get("/progress", authMiddleware, async (req, res) => {
   try {
     const now = new Date();
-    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const fromRaw = typeof req.query.from === "string" ? req.query.from : null;
+    const toRaw = typeof req.query.to === "string" ? req.query.to : null;
+    const parsedFrom = fromRaw ? new Date(fromRaw) : null;
+    const parsedTo = toRaw ? new Date(toRaw) : null;
+
+    const periodStart =
+      parsedFrom && !Number.isNaN(parsedFrom.getTime()) ? parsedFrom : defaultStart;
+    const periodEnd =
+      parsedTo && !Number.isNaN(parsedTo.getTime()) ? parsedTo : defaultEnd;
+
+    if (periodEnd < periodStart) {
+      return res.status(400).json({ error: "Invalid date range: to must be after from" });
+    }
+
+    const confirmationUserIdRaw =
+      typeof req.query.confirmationUserId === "string"
+        ? req.query.confirmationUserId
+        : null;
+    const confirmationUserId =
+      confirmationUserIdRaw && confirmationUserIdRaw !== "ALL"
+        ? Number(confirmationUserIdRaw)
+        : null;
+
+    if (
+      confirmationUserId !== null &&
+      (!Number.isInteger(confirmationUserId) || confirmationUserId <= 0)
+    ) {
+      return res.status(400).json({ error: "Invalid confirmation user" });
+    }
+
     const confirmationUserWhere =
       req.user.role === UserRole.SALES
         ? { salesmanId: req.user.id }
@@ -99,11 +131,13 @@ router.get("/progress", authMiddleware, async (req, res) => {
     const deliveredOrders = await prisma.order.groupBy({
       by: ["confirmationUserId"],
       where: {
-        confirmationUserId: { not: null },
+        confirmationUserId:
+          confirmationUserId !== null ? confirmationUserId : { not: null },
         status: OrderStatus.DELIVERED,
         createdAt: {
           gte: periodStart,
-          lt: periodEnd,
+          // Inclusive end when client sends endOfDay; exclusive month-end when default
+          ...(parsedTo ? { lte: periodEnd } : { lt: periodEnd }),
         },
         ...(confirmationUserWhere
           ? { confirmationUser: confirmationUserWhere }
@@ -115,7 +149,7 @@ router.get("/progress", authMiddleware, async (req, res) => {
     });
 
     res.json({
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      month: `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, "0")}`,
       objective: 50,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),

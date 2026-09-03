@@ -23,6 +23,7 @@ interface ConfirmationObjectiveDialogProps {
   onOpenChange: (open: boolean) => void;
   users: ConfirmationUser[];
   progressData?: ConfirmationUserProgressResponse;
+  periodLabel?: string;
   isLoading?: boolean;
   isError?: boolean;
 }
@@ -40,6 +41,7 @@ export const ConfirmationObjectiveDialog = ({
   onOpenChange,
   users,
   progressData,
+  periodLabel,
   isLoading = false,
   isError = false,
 }: ConfirmationObjectiveDialogProps) => {
@@ -56,9 +58,13 @@ export const ConfirmationObjectiveDialog = ({
 
     return deliveredDifference || a.name.localeCompare(b.name);
   });
-  const monthLabel = progressData?.month
-    ? format(new Date(`${progressData.month}-01T12:00:00`), "MMMM yyyy")
-    : "Current month";
+  const resolvedPeriodLabel =
+    periodLabel ||
+    (progressData?.periodStart && progressData?.periodEnd
+      ? `${format(new Date(progressData.periodStart), "dd MMM yyyy")} – ${format(new Date(progressData.periodEnd), "dd MMM yyyy")}`
+      : progressData?.month
+        ? format(new Date(`${progressData.month}-01T12:00:00`), "MMMM yyyy")
+        : "Current month");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,7 +79,7 @@ export const ConfirmationObjectiveDialog = ({
                 Confirmation objectives
               </DialogTitle>
               <DialogDescription className="mt-1 text-sm text-slate-500">
-                Monthly delivery performance for {monthLabel}, ranked by delivered orders.
+                Delivery performance for {resolvedPeriodLabel}, ranked by delivered orders.
               </DialogDescription>
             </div>
           </div>
@@ -82,9 +88,10 @@ export const ConfirmationObjectiveDialog = ({
         <div className="max-h-[min(70vh,620px)] space-y-4 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-900">Monthly target</p>
+              <p className="text-sm font-semibold text-slate-900">Period target</p>
               <p className="mt-1 text-xs text-slate-500">
-                Each confirmation user has a target of {target} delivered orders.
+                Tracking delivered orders for {resolvedPeriodLabel}. Target remains {target}{" "}
+                delivered orders per confirmation user.
               </p>
             </div>
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -101,7 +108,7 @@ export const ConfirmationObjectiveDialog = ({
             </div>
           ) : isError ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Monthly objective progress is temporarily unavailable. Please try again later.
+              Objective progress is temporarily unavailable. Please try again later.
             </div>
           ) : sortedUsers.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">

@@ -14,6 +14,7 @@ import {
   Loader2,
   Users,
   Target,
+  Package,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -51,11 +52,13 @@ import {
   useProducts,
 } from "@/hooks/useApi";
 import { ConfirmationObjectiveDialog } from "@/components/users/ConfirmationObjectiveDialog";
+import { ConfirmationProductSimulationDialog } from "@/components/users/ConfirmationProductSimulationDialog";
 import { ORDER_STATUSES } from "@/utils/order-utils";
 import {
   applyClientSideOrderFilters,
   buildApiOrderFilters,
   buildConfirmationUserOptions,
+  buildDateRangeParams,
   createDefaultOverviewFilters,
   DateFilterPreset,
   getDateRangeFromPreset,
@@ -89,10 +92,17 @@ const TeamOverview2 = () => {
   const [appliedFilters, setAppliedFilters] = useState(createDefaultOverviewFilters);
   const [currentPage, setCurrentPage] = useState(1);
   const [isObjectiveDialogOpen, setIsObjectiveDialogOpen] = useState(false);
+  const [isProductSimulationOpen, setIsProductSimulationOpen] = useState(false);
 
   const apiOrderFilters = useMemo(
     () => buildApiOrderFilters(appliedFilters),
     [appliedFilters]
+  );
+
+  const objectiveDateParams = useMemo(
+    () =>
+      buildDateRangeParams(appliedFilters.dateFilter, appliedFilters.dateRange),
+    [appliedFilters.dateFilter, appliedFilters.dateRange]
   );
 
   const periodLabel = useMemo(() => {
@@ -128,7 +138,28 @@ const TeamOverview2 = () => {
     data: objectiveProgress,
     isLoading: isLoadingObjectiveProgress,
     isError: isObjectiveProgressError,
-  } = useConfirmationUserProgress({ enabled: isObjectiveDialogOpen });
+  } = useConfirmationUserProgress({
+    enabled: isObjectiveDialogOpen,
+    from:
+      "startDate" in objectiveDateParams
+        ? objectiveDateParams.startDate
+        : undefined,
+    to:
+      "endDate" in objectiveDateParams ? objectiveDateParams.endDate : undefined,
+    confirmationUserId: appliedFilters.confirmationUserFilter,
+  });
+
+  const objectiveUsers = useMemo(() => {
+    if (
+      !appliedFilters.confirmationUserFilter ||
+      appliedFilters.confirmationUserFilter === OVERVIEW_ALL
+    ) {
+      return confirmationUsers;
+    }
+
+    const selectedId = Number(appliedFilters.confirmationUserFilter);
+    return confirmationUsers.filter((user) => user.id === selectedId);
+  }, [appliedFilters.confirmationUserFilter, confirmationUsers]);
   const {
     data: rawOrders = [],
     isLoading: isLoadingOrders,
@@ -274,17 +305,30 @@ const TeamOverview2 = () => {
               results
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setIsObjectiveDialogOpen(true)}
-            className="h-9 shrink-0 self-start border-slate-200 text-slate-700 hover:border-matles-300 hover:bg-matles-50 sm:self-auto"
-          >
-            <Target className="mr-2 h-4 w-4 text-matles-600" aria-hidden="true" />
-            <span className="hidden sm:inline">Track objectives</span>
-            <span className="sm:hidden">Objectives</span>
-          </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsProductSimulationOpen(true)}
+              className="h-9 border-slate-200 text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+            >
+              <Package className="mr-2 h-4 w-4 text-sky-600" aria-hidden="true" />
+              <span className="hidden sm:inline">Product count</span>
+              <span className="sm:hidden">Products</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsObjectiveDialogOpen(true)}
+              className="h-9 border-slate-200 text-slate-700 hover:border-matles-300 hover:bg-matles-50"
+            >
+              <Target className="mr-2 h-4 w-4 text-matles-600" aria-hidden="true" />
+              <span className="hidden sm:inline">Track objectives</span>
+              <span className="sm:hidden">Objectives</span>
+            </Button>
+          </div>
         </div>
 
         <Card className="border-slate-200 shadow-sm">
@@ -687,10 +731,18 @@ const TeamOverview2 = () => {
       <ConfirmationObjectiveDialog
         open={isObjectiveDialogOpen}
         onOpenChange={setIsObjectiveDialogOpen}
-        users={confirmationUsers}
+        users={objectiveUsers}
         progressData={objectiveProgress}
+        periodLabel={periodLabel}
         isLoading={isLoadingObjectiveProgress}
         isError={isObjectiveProgressError}
+      />
+      <ConfirmationProductSimulationDialog
+        open={isProductSimulationOpen}
+        onOpenChange={setIsProductSimulationOpen}
+        users={objectiveUsers}
+        orders={orders}
+        periodLabel={periodLabel}
       />
     </MainLayout>
   );

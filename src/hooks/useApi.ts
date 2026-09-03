@@ -154,13 +154,37 @@ export interface ConfirmationUserProgressResponse {
   users: ConfirmationUserProgress[];
 }
 
-export const useConfirmationUserProgress = (options?: { enabled?: boolean }) => {
+export const useConfirmationUserProgress = (options?: {
+  enabled?: boolean;
+  from?: string;
+  to?: string;
+  confirmationUserId?: string | number | null;
+}) => {
   const { user } = useAuth();
+  const confirmationUserId =
+    options?.confirmationUserId != null &&
+    String(options.confirmationUserId) !== '' &&
+    String(options.confirmationUserId) !== 'ALL'
+      ? String(options.confirmationUserId)
+      : undefined;
 
   return useQuery<ConfirmationUserProgressResponse>({
-    queryKey: ['confirmationUserProgress', user?.id, user?.role],
+    queryKey: [
+      'confirmationUserProgress',
+      user?.id,
+      user?.role,
+      options?.from ?? null,
+      options?.to ?? null,
+      confirmationUserId ?? null,
+    ],
     queryFn: async () => {
-      const { data } = await api.get('/confirmation-users/progress');
+      const { data } = await api.get('/confirmation-users/progress', {
+        params: {
+          ...(options?.from ? { from: options.from } : {}),
+          ...(options?.to ? { to: options.to } : {}),
+          ...(confirmationUserId ? { confirmationUserId } : {}),
+        },
+      });
       return data;
     },
     enabled: !!user && (options?.enabled ?? true),
