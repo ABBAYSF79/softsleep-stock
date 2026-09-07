@@ -2,31 +2,70 @@
 import html2pdf from "html2pdf.js";
 import { formatPrice, formatVariantDetails, getProductName } from "./order-utils";
 
-function buildOrdersExportElement(orders: any[]) {
+export type OrdersPdfExportOptions = {
+  title?: string;
+  filterLines?: string[];
+  /** When true, adds a Statut column (order.status). */
+  showStatus?: boolean;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  IN_PROCESS: "In Process",
+  DELIVERED: "Delivered",
+  RETURNED: "Returned",
+};
+
+function buildOrdersExportElement(orders: any[], options?: OrdersPdfExportOptions) {
+  const showStatus = Boolean(options?.showStatus);
   const root = document.createElement("div");
-  root.style.fontFamily =
-    "Arial, 'Segoe UI', 'Tahoma', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif";
+  root.style.fontFamily = "Arial, 'Segoe UI', Tahoma, sans-serif";
   root.style.color = "#0f172a";
   root.style.background = "#ffffff";
   root.style.padding = "16px";
-  root.style.textAlign = "right";
+  root.style.textAlign = "left";
   root.style.lineHeight = "1.35";
-  root.dir = "rtl";
-  root.lang = "ar";
+  root.dir = "ltr";
+  root.lang = "fr";
 
   const title = document.createElement("div");
   title.style.fontSize = "18px";
   title.style.fontWeight = "700";
   title.style.marginBottom = "8px";
-  title.textContent = "تصدير الطلبات";
+  title.textContent = options?.title || "Export des commandes";
   root.appendChild(title);
 
   const subtitle = document.createElement("div");
   subtitle.style.fontSize = "11px";
   subtitle.style.color = "#64748b";
-  subtitle.style.marginBottom = "14px";
-  subtitle.textContent = new Date().toLocaleString();
+  subtitle.style.marginBottom = options?.filterLines?.length ? "8px" : "14px";
+  subtitle.textContent = new Date().toLocaleString("fr-FR");
   root.appendChild(subtitle);
+
+  if (options?.filterLines?.length) {
+    const filtersBox = document.createElement("div");
+    filtersBox.style.fontSize = "11px";
+    filtersBox.style.color = "#334155";
+    filtersBox.style.background = "#f8fafc";
+    filtersBox.style.border = "1px solid #e2e8f0";
+    filtersBox.style.borderRadius = "6px";
+    filtersBox.style.padding = "8px 10px";
+    filtersBox.style.marginBottom = "14px";
+
+    const filtersTitle = document.createElement("div");
+    filtersTitle.style.fontWeight = "700";
+    filtersTitle.style.marginBottom = "4px";
+    filtersTitle.textContent = "Filtres appliqués";
+    filtersBox.appendChild(filtersTitle);
+
+    options.filterLines.forEach((line) => {
+      const row = document.createElement("div");
+      row.textContent = line;
+      filtersBox.appendChild(row);
+    });
+
+    root.appendChild(filtersBox);
+  }
 
   const table = document.createElement("table");
   table.style.width = "100%";
@@ -37,22 +76,21 @@ function buildOrdersExportElement(orders: any[]) {
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
   const headers: Array<{ label: string; width?: string }> = [
-    { label: "رقم", width: "5%" },
-    { label: "الزبون", width: "12%" },
-    { label: "الهاتف", width: "10%" },
-    { label: "المدينة", width: "8%" },
-    { label: "العنوان", width: "14%" },
-    { label: "المنتج", width: "18%" },
-    { label: "المقاس/اللون", width: "12%" },
-    { label: "الكمية", width: "6%" },
-    { label: "السعر", width: "7%" },
-    { label: "الإجمالي", width: "8%" },
+    { label: "N°", width: showStatus ? "5%" : "6%" },
+    { label: "Client", width: showStatus ? "12%" : "14%" },
+    { label: "Téléphone", width: "10%" },
+    { label: "Ville", width: "9%" },
+    { label: "Adresse", width: showStatus ? "14%" : "16%" },
+    { label: "Produit et dimension", width: showStatus ? "24%" : "28%" },
+    { label: "Qté", width: "5%" },
+    ...(showStatus ? [{ label: "Statut", width: "10%" }] : []),
+    { label: "Prix", width: "8%" },
   ];
 
   headers.forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h.label;
-    th.style.textAlign = "right";
+    th.style.textAlign = "left";
     th.style.padding = "8px 6px";
     th.style.border = "1px solid #e2e8f0";
     th.style.background = "#f8fafc";
@@ -80,6 +118,8 @@ function buildOrdersExportElement(orders: any[]) {
   orders.forEach((order, orderIndex) => {
     const items = Array.isArray(order?.items) ? order.items : [];
     const rowsCount = Math.max(items.length, 1);
+    const statusRaw = String(order?.status ?? "");
+    const statusLabel = STATUS_LABELS[statusRaw] || statusRaw || "-";
 
     for (let i = 0; i < rowsCount; i += 1) {
       const tr = document.createElement("tr");
@@ -111,15 +151,19 @@ function buildOrdersExportElement(orders: any[]) {
       const it = items[i];
       const name = it ? getProductName(it) : "";
       const variant = it ? formatVariantDetails(it) : "";
+      const productAndDimension = [name, variant].filter(Boolean).join(" — ");
       const qty = it ? String(it?.quantity ?? 0) : "";
-      const price = it ? `MAD ${formatPrice(it?.price)}` : "";
 
-      tr.appendChild(cell(String(name)));
-      tr.appendChild(cell(String(variant)));
+      tr.appendChild(cell(productAndDimension));
       tr.appendChild(cell(String(qty)));
-      tr.appendChild(cell(String(price)));
 
       if (i === 0) {
+        if (showStatus) {
+          const statusCell = cell(statusLabel);
+          statusCell.rowSpan = rowsCount;
+          tr.appendChild(statusCell);
+        }
+
         const totalCell = cell(`MAD ${formatPrice(order?.totalAmount)}`);
         totalCell.rowSpan = rowsCount;
         totalCell.style.fontWeight = "700";
@@ -140,8 +184,21 @@ function buildOrdersExportElement(orders: any[]) {
   return root;
 }
 
-export async function exportSelectedOrdersToPdfArabic(orders: any[], filename = "orders-selected.pdf") {
-  const element = buildOrdersExportElement(orders);
+/** @deprecated alias — French export is the default */
+export async function exportSelectedOrdersToPdfArabic(
+  orders: any[],
+  filename = "orders-selected.pdf",
+  options?: OrdersPdfExportOptions
+) {
+  return exportSelectedOrdersToPdf(orders, filename, options);
+}
+
+export async function exportSelectedOrdersToPdf(
+  orders: any[],
+  filename = "orders-selected.pdf",
+  options?: OrdersPdfExportOptions
+) {
+  const element = buildOrdersExportElement(orders, options);
   document.body.appendChild(element);
 
   const opt = {
@@ -159,4 +216,3 @@ export async function exportSelectedOrdersToPdfArabic(orders: any[], filename = 
     element.remove();
   }
 }
-

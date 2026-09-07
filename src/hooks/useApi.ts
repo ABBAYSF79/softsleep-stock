@@ -534,6 +534,150 @@ export const useAddCorrection = () => {
   });
 };
 
+// Inventory locations (TASK 2 — read-only; no stock logic)
+export const useInventoryLocations = () => {
+  return useQuery({
+    queryKey: ['inventory-locations'],
+    queryFn: async () => {
+      const { data } = await api.get('/inventory/locations', { timeout: 15000 });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+// Inventory balances (TASK 3 — read-only; available is computed server-side)
+export const useInventoryBalances = (params?: { pillowId?: number; locationId?: number }) => {
+  return useQuery({
+    queryKey: [
+      'inventory-balances',
+      params?.pillowId ?? 'all',
+      params?.locationId ?? 'all',
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/inventory/balances', {
+        params: {
+          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
+          ...(params?.locationId ? { locationId: params.locationId } : {}),
+        },
+        timeout: 15000,
+      });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+// Stock movements ledger (TASK 4 — read-only)
+export const useStockMovements = (params?: {
+  pillowId?: number;
+  locationId?: number;
+  type?: string;
+  referenceType?: string;
+  referenceId?: number;
+  limit?: number;
+}) => {
+  return useQuery({
+    queryKey: [
+      'inventory-movements',
+      params?.pillowId ?? 'all',
+      params?.locationId ?? 'all',
+      params?.type ?? 'all',
+      params?.referenceType ?? null,
+      params?.referenceId ?? null,
+      params?.limit ?? 50,
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/inventory/movements', {
+        params: {
+          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
+          ...(params?.locationId ? { locationId: params.locationId } : {}),
+          ...(params?.type ? { type: params.type } : {}),
+          ...(params?.referenceType ? { referenceType: params.referenceType } : {}),
+          ...(params?.referenceId ? { referenceId: params.referenceId } : {}),
+          ...(params?.limit ? { limit: params.limit } : {}),
+        },
+        timeout: 15000,
+      });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+// Inventory transfers (TASK 5 — document foundation)
+export const useInventoryTransfers = (params?: { status?: string }) => {
+  return useQuery({
+    queryKey: ['inventory-transfers', params?.status ?? 'all'],
+    queryFn: async () => {
+      const { data } = await api.get('/inventory/transfers', {
+        params: { ...(params?.status ? { status: params.status } : {}) },
+        timeout: 15000,
+      });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useInventoryTransfer = (id?: number) => {
+  return useQuery({
+    queryKey: ['inventory-transfer', id ?? null],
+    queryFn: async () => {
+      const { data } = await api.get(`/inventory/transfers/${id}`, { timeout: 15000 });
+      return data;
+    },
+    enabled: Number.isInteger(id) && (id as number) > 0,
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useInventoryDocuments = (params?: {
+  type?: string;
+  transferId?: number;
+  status?: string;
+}) => {
+  return useQuery({
+    queryKey: [
+      'inventory-documents',
+      params?.type ?? 'all',
+      params?.transferId ?? 'all',
+      params?.status ?? 'all',
+    ],
+    queryFn: async () => {
+      const { data } = await api.get('/inventory/documents', {
+        params: {
+          ...(params?.type ? { type: params.type } : {}),
+          ...(params?.transferId ? { transferId: params.transferId } : {}),
+          ...(params?.status ? { status: params.status } : {}),
+        },
+        timeout: 15000,
+      });
+      return data;
+    },
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useInventoryDocument = (id?: number) => {
+  return useQuery({
+    queryKey: ['inventory-document', id ?? null],
+    queryFn: async () => {
+      const { data } = await api.get(`/inventory/documents/${id}`, { timeout: 15000 });
+      return data;
+    },
+    enabled: Number.isInteger(id) && (id as number) > 0,
+    retry: 1,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
 // Pillow Stock
 export const usePillowStock = () => {
   return useQuery({

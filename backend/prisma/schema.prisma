@@ -51,6 +51,14 @@ model User {
   linkedConfirmationUsers ConfirmationUser[] @relation("LinkedSalesUser")
   invoices       Invoice[]
   deliveryServices UserDeliveryService[]
+  stockMovements StockMovement[]
+
+  transfersCreated    Transfer[]      @relation("TransferCreatedBy")
+  transfersDispatched Transfer[]      @relation("TransferDispatchedBy")
+  transfersCompleted  Transfer[]      @relation("TransferCompletedBy")
+  stockDocumentsCreated   StockDocument[] @relation("StockDocumentCreatedBy")
+  stockDocumentsValidated StockDocument[] @relation("StockDocumentValidatedBy")
+  reservationsCreated Reservation[] @relation("ReservationCreatedBy")
 
   @@index([linkedSalesUserId])
 }
@@ -104,17 +112,22 @@ model Order {
   isPaid            Boolean          @default(false)
   note              String?          @db.Text
   livreurNote       String?          @db.Text
+  /// Fulfillment inventory location (nullable = LEGACY / UNKNOWN). Never invent WH/SR.
+  locationId        Int?
   deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
   user              User             @relation(fields: [userId], references: [id])
   enteredBy         User?            @relation("OrderEnteredBy", fields: [enteredByUserId], references: [id])
+  location          Location?        @relation(fields: [locationId], references: [id], onDelete: Restrict)
   orderItems        OrderItem[]
   pillowItems       OrderPillowItem[]
+  reservations      Reservation[]
   confirmationUserId Int?
   confirmationUser   ConfirmationUser? @relation(fields: [confirmationUserId], references: [id])
 
   @@index([deliveryServiceId], map: "Order_deliveryServiceId_fkey")
   @@index([userId], map: "Order_userId_fkey")
   @@index([enteredByUserId])
+  @@index([locationId])
 }
 
 model OrderItem {
@@ -155,9 +168,14 @@ model Pillow {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  histories PillowStockHistory[]
-  orderItems PillowOrderItem[]
+  histories          PillowStockHistory[]
+  orderItems         PillowOrderItem[]
   mattressOrderItems OrderPillowItem[]
+  inventoryBalances  InventoryBalance[]
+  stockMovements     StockMovement[]
+  transferLines      TransferLine[]
+  stockDocumentLines StockDocumentLine[]
+  reservationLines   ReservationLine[]
 }
 
 model OrderPillowItem {
@@ -203,14 +221,19 @@ model PillowOrder {
   isPaid            Boolean        @default(false)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  /// Fulfillment inventory location (nullable = LEGACY / UNKNOWN). Never invent WH/SR.
+  locationId        Int?
 
   user              User           @relation(fields: [userId], references: [id])
   deliveryService   DeliveryService? @relation(fields: [deliveryServiceId], references: [id])
+  location          Location?      @relation(fields: [locationId], references: [id], onDelete: Restrict)
   items             PillowOrderItem[]
+  reservations      Reservation[]
 
   @@index([userId])
   @@index([deliveryServiceId])
   @@index([createdAt])
+  @@index([locationId])
 }
 
 model PillowOrderItem {
@@ -256,6 +279,45 @@ model CommissionSettings {
   useFixedAmount     Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+/// Singleton cutover boundary (TASK 9/15). mode: LEGACY | INVENTORY
+/// cutoverStatus: OPEN | FREEZE_PENDING | FROZEN | COMPLETED | ABORTED
+model InventoryCutoverSettings {
+  id                 Int       @id @default(1)
+  mode               String    @default("LEGACY")
+  cutoverStatus      String    @default("OPEN")
+  cutoverAt          DateTime?
+  cutoverDate        String?
+  referenceType      String?
+  openingFileHash    String?
+  notes              String?   @db.Text
+  countStartedAt     DateTime?
+  countFinalizedAt   DateTime?
+  freezeActivatedAt  DateTime?
+  freezeActivatedById Int?
+  backupConfirmedAt  DateTime?
+  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime  @default(now())
+}
+
+/// Explicit admin transitions for pre-cutover accessory orders (TASK 15).
+/// Never auto-created. Actions: CLOSE_UNDER_LEGACY | FREEZE | MIGRATE_TO_INVENTORY
+model LegacyOrderTransition {
+  id            Int      @id @default(autoincrement())
+  source        String
+  orderId       Int?
+  pillowOrderId Int?
+  action        String
+  status        String   @default("APPLIED")
+  notes         String?  @db.Text
+  userId        Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([source, orderId])
+  @@unique([source, pillowOrderId])
+  @@index([action])
 }
 
 model Size {
@@ -347,4 +409,285 @@ enum PillowStockChangeType {
   SUPPLY
   OUTGOING
   ADJUSTMENT
+}
+
+enum LocationType {
+  WAREHOUSE
+  SHOWROOM
+  OTHER
+}
+
+model Location {
+  id                 Int          @id @default(autoincrement())
+  code               String       @unique
+  name               String
+  type               LocationType
+  active             Boolean      @default(true)
+  isSellable         Boolean      @default(true)
+  allowsPresentation Boolean      @default(false)
+  sortOrder          Int          @default(0)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+  transfersFrom     Transfer[]      @relation("TransferSource")
+  transfersTo       Transfer[]      @relation("TransferDestination")
+  stockDocuments    StockDocument[]
+  orders            Order[]
+  pillowOrders      PillowOrder[]
+  reservations      Reservation[]
+
+  @@index([type])
+  @@index([active])
+  @@index([sortOrder])
+}
+
+// Per-location accessory quantities (TASK 3). available is NEVER stored.
+// Pillow.stock remains operational source of truth until a later task.
+model InventoryBalance {
+  id           Int      @id @default(autoincrement())
+  pillowId     Int
+  locationId   Int
+  physical     Int      @default(0)
+  presentation Int      @default(0)
+  reserved     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  pillow   Pillow   @relation(fields: [pillowId], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([pillowId, locationId])
+  @@index([pillowId])
+  @@index([locationId])
+  @@index([locationId, pillowId])
+}
+
+enum StockMovementType {
+  INITIAL
+  SUPPLY
+  SALE
+  RESERVATION
+  RELEASE
+  RETURN
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+}
+
+// Immutable inventory ledger (TASK 4). Corrections = compensating movements only.
+// quantity > 0 increases physical (or reserved/presentation delta for non-physical types).
+// quantity < 0 decreases physical (or reserved/presentation delta).
+model StockMovement {
+  id                   Int               @id @default(autoincrement())
+  pillowId             Int
+  locationId           Int
+  type                 StockMovementType
+  quantity             Int
+  previousPhysical     Int
+  newPhysical          Int
+  previousPresentation Int
+  newPresentation      Int
+  previousReserved     Int
+  newReserved          Int
+  reason               String?
+  referenceType        String?
+  referenceId          Int?
+  referenceNumber      String?
+  userId               Int?
+  createdAt            DateTime          @default(now())
+
+  pillow   Pillow   @relation(fields: [pillowId], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([pillowId])
+  @@index([locationId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([referenceType, referenceId])
+  @@index([pillowId, locationId, createdAt])
+  @@index([userId])
+}
+
+enum TransferStatus {
+  DRAFT
+  DISPATCHED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum StockDocumentType {
+  BON_SORTIE
+  BON_ENTREE
+}
+
+enum StockDocumentStatus {
+  DRAFT
+  VALIDATED
+  CANCELLED
+}
+
+// Internal location transfers (TASK 5). Document foundation only — no InventoryBalance mutations yet.
+model Transfer {
+  id                    Int            @id @default(autoincrement())
+  referenceNumber       String         @unique
+  sourceLocationId      Int
+  destinationLocationId Int
+  status                TransferStatus @default(DRAFT)
+  reason                String?
+  createdById           Int?
+  dispatchedById        Int?
+  completedById         Int?
+  createdAt             DateTime       @default(now())
+  dispatchedAt          DateTime?
+  completedAt           DateTime?
+  updatedAt             DateTime       @updatedAt
+
+  sourceLocation      Location @relation("TransferSource", fields: [sourceLocationId], references: [id], onDelete: Restrict)
+  destinationLocation Location @relation("TransferDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  createdBy           User?    @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  dispatchedBy        User?    @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id], onDelete: SetNull)
+  completedBy         User?    @relation("TransferCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  lines               TransferLine[]
+  stockDocuments      StockDocument[]
+
+  @@index([sourceLocationId])
+  @@index([destinationLocationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TransferLine {
+  id               Int      @id @default(autoincrement())
+  transferId       Int
+  pillowId         Int
+  sentQuantity     Int      @default(0)
+  receivedQuantity Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  pillow   Pillow   @relation(fields: [pillowId], references: [id], onDelete: Restrict)
+
+  @@unique([transferId, pillowId])
+  @@index([transferId])
+  @@index([pillowId])
+}
+
+model StockDocument {
+  id              Int                 @id @default(autoincrement())
+  documentNumber  String              @unique
+  type            StockDocumentType
+  status          StockDocumentStatus @default(DRAFT)
+  transferId      Int?
+  locationId      Int
+  createdById     Int?
+  validatedById   Int?
+  reason          String?
+  createdAt       DateTime            @default(now())
+  validatedAt     DateTime?
+  cancelledAt     DateTime?
+
+  transfer    Transfer?           @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  location    Location            @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy   User?               @relation("StockDocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  validatedBy User?               @relation("StockDocumentValidatedBy", fields: [validatedById], references: [id], onDelete: SetNull)
+  lines       StockDocumentLine[]
+
+  @@index([type])
+  @@index([status])
+  @@index([transferId])
+  @@index([locationId])
+  @@index([createdAt])
+}
+
+model StockDocumentLine {
+  id              Int      @id @default(autoincrement())
+  stockDocumentId Int
+  pillowId        Int
+  quantity        Int
+  createdAt       DateTime @default(now())
+
+  stockDocument StockDocument @relation(fields: [stockDocumentId], references: [id], onDelete: Cascade)
+  pillow        Pillow        @relation(fields: [pillowId], references: [id], onDelete: Restrict)
+
+  @@unique([stockDocumentId, pillowId])
+  @@index([stockDocumentId])
+  @@index([pillowId])
+}
+
+// Concurrency-safe document numbering: TR / BS / BE / RV per year
+model DocumentSequence {
+  id         Int      @id @default(autoincrement())
+  type       String
+  year       Int
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([type, year])
+}
+
+// Order accessory reservations (TASK 12). Physical stock is NOT reduced until fulfill.
+enum ReservationStatus {
+  ACTIVE
+  PARTIALLY_FULFILLED
+  FULFILLED
+  RELEASED
+  CANCELLED
+}
+
+enum ReservationSource {
+  ORDER
+  PILLOW_ORDER
+}
+
+model Reservation {
+  id              Int               @id @default(autoincrement())
+  referenceNumber String            @unique
+  source          ReservationSource
+  orderId         Int?
+  pillowOrderId   Int?
+  locationId      Int
+  status          ReservationStatus @default(ACTIVE)
+  idempotencyKey  String            @unique
+  createdById     Int?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  releasedAt      DateTime?
+  fulfilledAt     DateTime?
+  cancelledAt     DateTime?
+
+  order       Order?       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  pillowOrder PillowOrder? @relation(fields: [pillowOrderId], references: [id], onDelete: Restrict)
+  location    Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy   User?        @relation("ReservationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lines       ReservationLine[]
+
+  @@index([orderId])
+  @@index([pillowOrderId])
+  @@index([locationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ReservationLine {
+  id                Int      @id @default(autoincrement())
+  reservationId     Int
+  pillowId          Int
+  quantity          Int
+  fulfilledQuantity Int      @default(0)
+  releasedQuantity  Int      @default(0)
+  returnedQuantity  Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  pillow      Pillow      @relation(fields: [pillowId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, pillowId])
+  @@index([reservationId])
+  @@index([pillowId])
 }

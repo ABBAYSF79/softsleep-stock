@@ -14,12 +14,14 @@ import {
   UserCheck,
   Users,
   Wallet,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavGroupId =
   | "main"
   | "catalog"
+  | "inventory"
   | "orders"
   | "analytics"
   | "finance"
@@ -39,6 +41,8 @@ export interface NavItem {
   livreurOnly?: boolean;
   suiviAllowed?: boolean;
   highlight?: boolean;
+  /** When true, only exact pathname matches (e.g. Overview at /inventory). */
+  exact?: boolean;
 }
 
 export const APP_NAME = "Matelas Stock";
@@ -47,6 +51,7 @@ export const APP_TAGLINE = "SoftSleep Management";
 export const NAV_GROUPS: NavGroup[] = [
   { id: "main", label: "Main" },
   { id: "catalog", label: "Catalog" },
+  { id: "inventory", label: "Accessoires" },
   { id: "orders", label: "Orders" },
   { id: "analytics", label: "Analytics" },
   { id: "finance", label: "Finance" },
@@ -72,6 +77,21 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/stock",
     icon: Package,
     group: "catalog",
+    adminOnly: true,
+  },
+  {
+    title: "Inventory",
+    path: "/inventory",
+    icon: Warehouse,
+    group: "inventory",
+    adminOnly: true,
+    highlight: true,
+  },
+  {
+    title: "Legacy Accessoires Stock",
+    path: "/pillow-stock",
+    icon: Package,
+    group: "inventory",
     adminOnly: true,
   },
   {
@@ -188,6 +208,18 @@ export const NAV_ITEMS: NavItem[] = [
 export function getNavTitle(pathname: string): string {
   const exact = NAV_ITEMS.find((item) => item.path === pathname);
   if (exact) return exact.title;
+  if (pathname.startsWith("/inventory/transfers/")) return "Transfer";
+  if (pathname.startsWith("/inventory/documents/")) return "Document";
+  if (pathname.startsWith("/inventory/stock")) return "Inventory Stock";
+  if (pathname.startsWith("/inventory/locations")) return "Locations";
+  if (pathname.startsWith("/inventory/transfers")) return "Transfers";
+  if (pathname.startsWith("/inventory/documents")) return "Documents";
+  if (pathname.startsWith("/inventory/reservations")) return "Reservations";
+  if (pathname.startsWith("/inventory/history")) return "Inventory History";
+  if (pathname.startsWith("/inventory/cutover")) return "Cutover";
+  if (pathname.startsWith("/inventory/reconciliation")) return "Reconciliation";
+  if (pathname.startsWith("/inventory")) return "Inventory";
+  if (pathname.startsWith("/pillow-stock")) return "Legacy Accessoires Stock";
   return APP_NAME;
 }
 

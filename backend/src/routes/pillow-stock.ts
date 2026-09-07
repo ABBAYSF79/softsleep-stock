@@ -1,9 +1,15 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware, adminOnly } from '../middleware/auth';
+import {
+  AccessoryStockWriter,
+  accessoryWriterErrorToHttp,
+} from '../services/AccessoryStockWriter';
+import { getInventoryMode } from '../services/InventoryMode';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const accessoryStock = new AccessoryStockWriter(prisma);
 
 const getAdminCode = (req: express.Request) => {
   const headerCode = req.header('x-admin-code');
@@ -335,6 +341,52 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
     if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
     if (!Number.isInteger(stock) || stock < 0) return res.status(400).json({ error: 'Invalid stock' });
 
+    const mode = await getInventoryMode(prisma);
+
+    // INVENTORY mode: never write Pillow.stock as business truth on create.
+    // Create at 0; optional initial qty goes through InventoryService.supply (location required).
+    if (mode === 'INVENTORY') {
+      if (stock > 0) {
+        const locationId = await accessoryStock.resolveLocationIdFromBody(req.body ?? {});
+        if (!locationId) {
+          return res.status(400).json({
+            error: 'locationId (or locationCode) is required for initial stock in INVENTORY mode',
+            code: 'INVENTORY_LOCATION_REQUIRED',
+          });
+        }
+        const pillow = await prisma.pillow.create({
+          data: { name, price, stock: 0 },
+        });
+        await prisma.activity.create({
+          data: {
+            userId: req.user.id,
+            type: 'PILLOW_CREATED',
+            description: `Created pillow "${name}" (inventory mode, stock via supply)`,
+          },
+        });
+        const supplied = await accessoryStock.supply({
+          pillowId: pillow.id,
+          quantity: stock,
+          reason: String(req.body?.reason ?? 'Initial stock').trim() || 'Initial stock',
+          userId: req.user.id,
+          locationId,
+        });
+        return res.status(201).json(supplied.pillow);
+      }
+
+      const pillow = await prisma.pillow.create({
+        data: { name, price, stock: 0 },
+      });
+      await prisma.activity.create({
+        data: {
+          userId: req.user.id,
+          type: 'PILLOW_CREATED',
+          description: `Created pillow "${name}" with zero stock (inventory mode)`,
+        },
+      });
+      return res.status(201).json(pillow);
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const pillow = await tx.pillow.create({
         data: {
@@ -369,6 +421,10 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
     res.status(201).json(result);
   } catch (error) {
+    const mapped = accessoryWriterErrorToHttp(error);
+    if (mapped.body.code) {
+      return res.status(mapped.status).json(mapped.body);
+    }
     console.error('Error creating pillow:', error);
     res.status(500).json({ error: 'Failed to create pillow' });
   }
@@ -385,46 +441,20 @@ router.post('/:id/supply', authMiddleware, adminOnly, async (req, res) => {
     if (!Number.isInteger(quantity) || quantity <= 0) return res.status(400).json({ error: 'Invalid quantity' });
     if (!reason) return res.status(400).json({ error: 'Reason is required' });
 
-    const result = await prisma.$transaction(async (tx) => {
-      const pillow = await tx.pillow.findUnique({ where: { id } });
-      if (!pillow) throw new Error('Pillow not found');
-
-      const previousStock = pillow.stock;
-      const newStock = previousStock + quantity;
-
-      const updated = await tx.pillow.update({
-        where: { id },
-        data: { stock: newStock },
-      });
-
-      await tx.pillowStockHistory.create({
-        data: {
-          pillowId: id,
-          quantity,
-          type: 'SUPPLY',
-          reason,
-          previousStock,
-          newStock,
-          userId: req.user.id,
-        },
-      });
-
-      await tx.activity.create({
-        data: {
-          userId: req.user.id,
-          type: 'PILLOW_SUPPLY',
-          description: `Added ${quantity} to pillow "${pillow.name}"`,
-          details: reason,
-        },
-      });
-
-      return updated;
+    const locationId = await accessoryStock.resolveLocationIdFromBody(req.body ?? {});
+    const { pillow } = await accessoryStock.supply({
+      pillowId: id,
+      quantity,
+      reason,
+      userId: req.user.id,
+      locationId,
     });
 
-    res.json(result);
+    res.json(pillow);
   } catch (error: any) {
-    if (error instanceof Error && error.message === 'Pillow not found') {
-      return res.status(404).json({ error: 'Pillow not found' });
+    const mapped = accessoryWriterErrorToHttp(error);
+    if (mapped.body.code) {
+      return res.status(mapped.status).json(mapped.body);
     }
     console.error('Error adding pillow supply:', error);
     res.status(500).json({ error: 'Failed to add pillow supply' });
@@ -442,53 +472,56 @@ router.post('/:id/outgoing', authMiddleware, adminOnly, async (req, res) => {
     if (!Number.isInteger(quantity) || quantity <= 0) return res.status(400).json({ error: 'Invalid quantity' });
     if (!reason) return res.status(400).json({ error: 'Reason is required' });
 
-    const result = await prisma.$transaction(async (tx) => {
-      const pillow = await tx.pillow.findUnique({ where: { id } });
-      if (!pillow) throw new Error('Pillow not found');
-
-      const previousStock = pillow.stock;
-      const newStock = previousStock - quantity;
-      if (newStock < 0) throw new Error('Insufficient stock');
-
-      const updated = await tx.pillow.update({
-        where: { id },
-        data: { stock: newStock },
-      });
-
-      await tx.pillowStockHistory.create({
-        data: {
-          pillowId: id,
-          quantity: -quantity,
-          type: 'OUTGOING',
-          reason,
-          previousStock,
-          newStock,
-          userId: req.user.id,
-        },
-      });
-
-      await tx.activity.create({
-        data: {
-          userId: req.user.id,
-          type: 'PILLOW_OUTGOING',
-          description: `Removed ${quantity} from pillow "${pillow.name}"`,
-          details: reason,
-        },
-      });
-
-      return updated;
+    const locationId = await accessoryStock.resolveLocationIdFromBody(req.body ?? {});
+    const { pillow } = await accessoryStock.outgoing({
+      pillowId: id,
+      quantity,
+      reason,
+      userId: req.user.id,
+      locationId,
     });
 
-    res.json(result);
+    res.json(pillow);
   } catch (error: any) {
-    if (error instanceof Error && error.message === 'Pillow not found') {
-      return res.status(404).json({ error: 'Pillow not found' });
-    }
-    if (error instanceof Error && error.message === 'Insufficient stock') {
-      return res.status(400).json({ error: 'Insufficient stock' });
+    const mapped = accessoryWriterErrorToHttp(error);
+    if (mapped.body.code) {
+      return res.status(mapped.status).json(mapped.body);
     }
     console.error('Error creating pillow outgoing:', error);
     res.status(500).json({ error: 'Failed to create outgoing operation' });
+  }
+});
+
+router.post('/:id/adjust', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!requireAdminCode(req, res)) return;
+    const id = Number(req.params.id);
+    const delta = Number(req.body?.delta ?? req.body?.quantity);
+    const reason = String(req.body?.reason ?? '').trim();
+
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id' });
+    if (!Number.isInteger(delta) || delta === 0) {
+      return res.status(400).json({ error: 'Adjustment delta must be a non-zero integer' });
+    }
+    if (!reason) return res.status(400).json({ error: 'Reason is required', code: 'REASON_REQUIRED' });
+
+    const locationId = await accessoryStock.resolveLocationIdFromBody(req.body ?? {});
+    const { pillow } = await accessoryStock.adjust({
+      pillowId: id,
+      delta,
+      reason,
+      userId: req.user.id,
+      locationId,
+    });
+
+    res.json(pillow);
+  } catch (error: any) {
+    const mapped = accessoryWriterErrorToHttp(error);
+    if (mapped.body.code) {
+      return res.status(mapped.status).json(mapped.body);
+    }
+    console.error('Error adjusting pillow stock:', error);
+    res.status(500).json({ error: 'Failed to adjust pillow stock' });
   }
 });
 

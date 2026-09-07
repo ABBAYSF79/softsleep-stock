@@ -15,6 +15,9 @@ import {
   Users,
   Target,
   Package,
+  Eye,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -53,7 +56,16 @@ import {
 } from "@/hooks/useApi";
 import { ConfirmationObjectiveDialog } from "@/components/users/ConfirmationObjectiveDialog";
 import { ConfirmationProductSimulationDialog } from "@/components/users/ConfirmationProductSimulationDialog";
+import { OrderDialog } from "@/components/orders/OrderDialog";
 import { ORDER_STATUSES } from "@/utils/order-utils";
+import {
+  buildTeamOverviewExportFilename,
+  buildTeamOverviewFilterLines,
+  exportTeamOverviewToExcel,
+  type TeamOverviewExportMeta,
+} from "@/utils/excel-export";
+import { exportSelectedOrdersToPdf } from "@/utils/order-management-pdf";
+import { toast } from "sonner";
 import {
   applyClientSideOrderFilters,
   buildApiOrderFilters,
@@ -93,6 +105,20 @@ const TeamOverview2 = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isObjectiveDialogOpen, setIsObjectiveDialogOpen] = useState(false);
   const [isProductSimulationOpen, setIsProductSimulationOpen] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState<any | null>(null);
+  const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleViewOrder = useCallback((order: any) => {
+    setViewingOrder(order);
+    setIsOrderDialogOpen(true);
+  }, []);
+
+  const handleOrderDialogClose = useCallback((open: boolean) => {
+    setIsOrderDialogOpen(open);
+    if (!open) setViewingOrder(null);
+  }, []);
 
   const apiOrderFilters = useMemo(
     () => buildApiOrderFilters(appliedFilters),
@@ -262,6 +288,99 @@ const TeamOverview2 = () => {
     setCurrentPage(1);
   }, []);
 
+  const exportMeta = useMemo((): TeamOverviewExportMeta => {
+    const statusLabel =
+      appliedFilters.statusFilter === OVERVIEW_ALL
+        ? "All"
+        : ORDER_STATUSES[appliedFilters.statusFilter as keyof typeof ORDER_STATUSES]
+            ?.label || appliedFilters.statusFilter;
+
+    const confirmationUserLabel =
+      appliedFilters.confirmationUserFilter === OVERVIEW_ALL
+        ? "All"
+        : confirmationUserOptions.find(
+            (cu) => String(cu.id) === appliedFilters.confirmationUserFilter
+          )?.name || "Confirmation";
+
+    const productLabel =
+      appliedFilters.productFilter === OVERVIEW_ALL
+        ? "All"
+        : productOptions.find((p) => p.value === appliedFilters.productFilter)
+            ?.label || "Product";
+
+    const periodKey =
+      appliedFilters.dateFilter === "custom" &&
+      appliedFilters.dateRange?.from &&
+      appliedFilters.dateRange?.to
+        ? `${format(appliedFilters.dateRange.from, "yyyy-MM-dd")}_${format(
+            appliedFilters.dateRange.to,
+            "yyyy-MM-dd"
+          )}`
+        : appliedFilters.dateFilter;
+
+    return {
+      periodLabel,
+      periodKey,
+      statusLabel,
+      confirmationUserLabel,
+      productLabel,
+      searchTerm: appliedFilters.searchTerm,
+      orderCount: orders.length,
+    };
+  }, [
+    appliedFilters.confirmationUserFilter,
+    appliedFilters.dateFilter,
+    appliedFilters.dateRange?.from,
+    appliedFilters.dateRange?.to,
+    appliedFilters.productFilter,
+    appliedFilters.searchTerm,
+    appliedFilters.statusFilter,
+    confirmationUserOptions,
+    orders.length,
+    periodLabel,
+    productOptions,
+  ]);
+
+  const handleExportExcel = useCallback(async () => {
+    if (!orders.length) {
+      toast.error("No orders to export for the current filters");
+      return;
+    }
+    setIsExportingExcel(true);
+    try {
+      const filterLines = buildTeamOverviewFilterLines(exportMeta);
+      const filename = buildTeamOverviewExportFilename(exportMeta, "xlsx");
+      await exportTeamOverviewToExcel(orders, filename, filterLines);
+      toast.success(`Exported ${orders.length} order(s) to Excel`);
+    } catch {
+      toast.error("Failed to export Excel");
+    } finally {
+      setIsExportingExcel(false);
+    }
+  }, [exportMeta, orders]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!orders.length) {
+      toast.error("No orders to export for the current filters");
+      return;
+    }
+    setIsExportingPdf(true);
+    try {
+      const filterLines = buildTeamOverviewFilterLines(exportMeta);
+      const filename = buildTeamOverviewExportFilename(exportMeta, "pdf");
+      await exportSelectedOrdersToPdf(orders, filename, {
+        title: "Team Overview — Export des commandes",
+        filterLines,
+        showStatus: true,
+      });
+      toast.success(`Exported ${orders.length} order(s) to PDF`);
+    } catch {
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [exportMeta, orders]);
+
   const isInitialLoad = isLoadingOrders && orders.length === 0;
 
   if (isInitialLoad && isLoadingConfirmationUsers) {
@@ -306,6 +425,37 @@ const TeamOverview2 = () => {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleExportExcel()}
+              disabled={isExportingExcel || isExportingPdf || orders.length === 0}
+              className="h-9 border-slate-200 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50"
+            >
+              {isExportingExcel ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
+              )}
+              <span className="hidden sm:inline">Excel</span>
+              <span className="sm:hidden">XLS</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleExportPdf()}
+              disabled={isExportingExcel || isExportingPdf || orders.length === 0}
+              className="h-9 border-slate-200 text-slate-700 hover:border-rose-300 hover:bg-rose-50"
+            >
+              {isExportingPdf ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="mr-2 h-4 w-4 text-rose-600" />
+              )}
+              PDF
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -577,7 +727,16 @@ const TeamOverview2 = () => {
                 paginatedOrders.map((order) => (
                   <article
                     key={order.id}
-                    className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleViewOrder(order)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleViewOrder(order);
+                      }
+                    }}
+                    className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-matles-200 hover:bg-matles-50/30"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -591,8 +750,21 @@ const TeamOverview2 = () => {
                           <p className="truncate text-xs text-slate-500">{order.phone}</p>
                         )}
                       </div>
-                      <div className="shrink-0 whitespace-nowrap">
+                      <div className="flex shrink-0 items-center gap-2">
                         {getStatusBadge(order.status)}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          aria-label={`View order ${order.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewOrder(order);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 border-y border-slate-100 py-3 text-sm">
@@ -635,13 +807,14 @@ const TeamOverview2 = () => {
                     <TableHead className="font-medium">Date</TableHead>
                     <TableHead className="font-medium text-right">Amount</TableHead>
                     <TableHead className="font-medium">Status</TableHead>
+                    <TableHead className="w-12 font-medium text-right">View</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedOrders.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={8}
                         className="py-16 text-center text-muted-foreground"
                       >
                         No orders match the current filters.
@@ -651,7 +824,8 @@ const TeamOverview2 = () => {
                     paginatedOrders.map((order) => (
                       <TableRow
                         key={order.id}
-                        className="border-slate-100 transition-colors even:bg-slate-50/30 hover:bg-matles-50/35"
+                        className="cursor-pointer border-slate-100 transition-colors even:bg-slate-50/30 hover:bg-matles-50/35"
+                        onClick={() => handleViewOrder(order)}
                       >
                         <TableCell className="font-medium tabular-nums text-matles-700">
                           #{order.id}
@@ -684,6 +858,21 @@ const TeamOverview2 = () => {
                         </TableCell>
                         <TableCell>
                           <div className="whitespace-nowrap">{getStatusBadge(order.status)}</div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            aria-label={`View order ${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewOrder(order);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -727,6 +916,12 @@ const TeamOverview2 = () => {
           </CardContent>
         </Card>
       </div>
+
+      <OrderDialog
+        open={isOrderDialogOpen}
+        onOpenChange={handleOrderDialogClose}
+        order={viewingOrder}
+      />
 
       <ConfirmationObjectiveDialog
         open={isObjectiveDialogOpen}

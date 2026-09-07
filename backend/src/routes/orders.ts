@@ -14,9 +14,23 @@ import {
   resolveOrderSellerUserId,
   OrderAccessError,
 } from '../utils/order-access';
+import {
+  canChangeOrderFulfillmentLocation,
+  orderLocationErrorToHttp,
+  orderLocationSelect,
+  resolveOptionalSellableLocationId,
+} from '../utils/order-location';
+import { getInventoryMode } from '../services/InventoryMode';
+import { OrderAccessoryInventory } from '../services/OrderAccessoryInventory';
+import { reservationErrorToHttp, ReservationDomainError } from '../services/ReservationService';
+import { cutoverErrorToHttp, CutoverFreezeService, CutoverDomainError } from '../services/CutoverFreezeService';
+import { LegacyOrderTransitionService } from '../services/LegacyOrderTransitionService';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const orderAccessoryInventory = new OrderAccessoryInventory(prisma);
+const cutoverFreeze = new CutoverFreezeService(prisma);
+const legacyTransitions = new LegacyOrderTransitionService(prisma);
 
 const DEFAULT_UNPAGINATED_DAYS = 90;
 const DEFAULT_UNPAGINATED_LIMIT = 300;
@@ -426,6 +440,7 @@ router.get('/', authMiddleware, async (req, res) => {
             pillow: true
           }
         },
+        location: { select: orderLocationSelect },
         confirmationUser: {
           select: {
             id: true,
@@ -526,7 +541,7 @@ router.post('/', authMiddleware, async (req, res) => {
       throw error;
     }
 
-    const { customerName, address, phone, totalAmount, items, deliveryServiceId, city, confirmationUserId, note, trackingCode, pillowItems } = req.body;
+    const { customerName, address, phone, totalAmount, items, deliveryServiceId, city, confirmationUserId, note, trackingCode, pillowItems, locationId: locationIdRaw } = req.body;
     console.log('Creating order for customer:', customerName);
     console.log('Items:', items);
     console.log('Delivery Service:', deliveryServiceId);
@@ -644,9 +659,27 @@ router.post('/', authMiddleware, async (req, res) => {
     const resolvedConfirmationUserId = confirmationUserId
       ? parseInt(confirmationUserId)
       : null;
+
+    let resolvedLocationId: number | null = null;
+    try {
+      resolvedLocationId = await resolveOptionalSellableLocationId(prisma, locationIdRaw);
+    } catch (error) {
+      const mapped = orderLocationErrorToHttp(error);
+      if (mapped) return res.status(mapped.status).json(mapped.body);
+      throw error;
+    }
+
+    const inventoryMode = await getInventoryMode(prisma);
+    if (inventoryMode === 'INVENTORY' && orderPillowItems.length > 0 && !resolvedLocationId) {
+      return res.status(400).json({
+        error: 'A sellable fulfillment location is required when inventory mode is active',
+        code: 'INVENTORY_LOCATION_REQUIRED',
+      });
+    }
     
-    // Create order without affecting stock (PENDING status)
-    const order = await prisma.order.create({
+    // Create order + optional INVENTORY reservation in one transaction (TASK 14.1)
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
       data: {
         userId: sellerUserId,
         enteredByUserId: req.user!.role === UserRole.SUIVI ? req.user!.id : null,
@@ -661,6 +694,7 @@ router.post('/', authMiddleware, async (req, res) => {
         confirmationUserId: resolvedConfirmationUserId,
         note: note || null,
         trackingCode: trackingCode || null,
+        locationId: resolvedLocationId,
         orderItems: {
           create: orderItems
         },
@@ -695,6 +729,7 @@ router.post('/', authMiddleware, async (req, res) => {
             pillow: true
           }
         },
+        location: { select: orderLocationSelect },
         deliveryService: {
           select: {
             id: true,
@@ -718,6 +753,25 @@ router.post('/', authMiddleware, async (req, res) => {
           }
         }
       }
+    });
+
+      if (inventoryMode === 'INVENTORY' && orderPillowItems.length > 0) {
+        const consolidated = new Map<number, number>();
+        for (const pi of orderPillowItems) {
+          consolidated.set(pi.pillowId, (consolidated.get(pi.pillowId) || 0) + pi.quantity);
+        }
+        await orderAccessoryInventory.reserveMattressOrderInTx(tx, {
+          orderId: created.id,
+          locationId: resolvedLocationId,
+          lines: Array.from(consolidated.entries()).map(([pillowId, quantity]) => ({
+            pillowId,
+            quantity,
+          })),
+          userId: req.user!.id,
+        });
+      }
+
+      return created;
     });
     
     // Log activity
@@ -767,6 +821,12 @@ router.post('/', authMiddleware, async (req, res) => {
     
     res.status(201).json(formattedOrder);
   } catch (error) {
+    const locErr = orderLocationErrorToHttp(error);
+    if (locErr) return res.status(locErr.status).json(locErr.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
     console.error('Error creating order:', error);
     res.status(400).json({ error: 'Failed to create order' });
   }
@@ -882,6 +942,18 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: 'Tracking code can only be edited when order is IN_PROCESS' });
       }
     }
+
+    // PENDING never reserved stock — RETURNED is invalid from PENDING
+    if (
+      newStatus &&
+      newStatus !== oldStatus &&
+      oldStatus === OrderStatus.PENDING &&
+      newStatus === OrderStatus.RETURNED
+    ) {
+      return res.status(400).json({
+        error: 'Cannot set RETURNED from PENDING — stock was never reserved',
+      });
+    }
     
     console.log(`Current status: ${oldStatus}, New status: ${newStatus}`);
     
@@ -925,8 +997,35 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
         }
       });
 
+      // Accessory stock: LEGACY uses Pillow.stock deltas below.
+      // INVENTORY uses ReservationService via OrderAccessoryInventory (same transaction).
+      const inventoryMode = await getInventoryMode(tx);
+      const skipLegacyAccessoryStock = inventoryMode === 'INVENTORY';
+
+      if (!skipLegacyAccessoryStock && newStatus && oldStatus !== newStatus) {
+        await cutoverFreeze.assertNotFrozen(tx, 'legacy order accessory stock');
+        const gate = await legacyTransitions.gateInventoryAffectingChange(
+          'ORDER',
+          parseInt(id),
+          (order.pillowItems || []).length > 0
+        );
+        if (gate === 'SKIP_INVENTORY') {
+          // CLOSED_UNDER_LEGACY — do not mutate accessory Pillow.stock again
+        }
+      }
+
       const applyPillowStockChange = async (pillowId: number, delta: number, reason: string, type: any) => {
-        const pillow = await tx.pillow.findUnique({ where: { id: pillowId } });
+        if (skipLegacyAccessoryStock) return;
+        const gate = await legacyTransitions.gateInventoryAffectingChange(
+          'ORDER',
+          parseInt(id),
+          true
+        );
+        if (gate === 'SKIP_INVENTORY') return;
+        const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+          SELECT id, stock FROM Pillow WHERE id = ${pillowId} FOR UPDATE
+        `;
+        const pillow = locked[0];
         if (!pillow) return;
         const previousStock = pillow.stock;
         const newStock = previousStock + delta;
@@ -1090,6 +1189,18 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
             );
           }
         }
+
+        // INVENTORY accessory reservation effects — same transaction as status/mattress
+        if (skipLegacyAccessoryStock) {
+          await orderAccessoryInventory.onStatusChangeInTx(tx, {
+            source: 'ORDER',
+            orderId: parseInt(id),
+            oldStatus: oldStatus!,
+            newStatus,
+            userId: req.user!.id,
+            hasAccessoryLines: (order.pillowItems || []).length > 0,
+          });
+        }
       }
 
       return order;
@@ -1116,6 +1227,12 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
     res.json(updatedOrder);
   } catch (error) {
     console.error('Error updating order:', error);
+    const cutover = cutoverErrorToHttp(error);
+    if (cutover) return res.status(cutover.status).json(cutover.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
     res.status(400).json({ error: 'Failed to update order' });
   }
 });
@@ -1346,7 +1463,8 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       totalAmount,
       status,
       trackingCode,
-      note
+      note,
+      locationId: locationIdRaw,
     } = req.body;
     
     // Verify password (Static password check)
@@ -1377,6 +1495,9 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
 
     // Transaction to handle everything safely
     const updatedOrder = await prisma.$transaction(async (tx) => {
+      const inventoryMode = await getInventoryMode(tx);
+      const skipLegacyAccessoryStock = inventoryMode === 'INVENTORY';
+
       // 1. Revert stock changes from old items IF they were deducted
       // Stock is deducted if status was IN_PROCESS or DELIVERED
       const stockWasDeducted = currentOrder.status === 'IN_PROCESS' || currentOrder.status === 'DELIVERED';
@@ -1392,26 +1513,32 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
           // but we could if strict auditing is needed.
         }
 
-        for (const pi of currentOrder.pillowItems) {
-          const pillow = await tx.pillow.findUnique({ where: { id: pi.pillowId } });
-          if (!pillow) continue;
-          const previousStock = pillow.stock;
-          const newStock = previousStock + pi.quantity;
-          await tx.pillow.update({
-            where: { id: pi.pillowId },
-            data: { stock: newStock }
-          });
-          await tx.pillowStockHistory.create({
-            data: {
-              pillowId: pi.pillowId,
-              quantity: pi.quantity,
-              type: 'ADJUSTMENT',
-              reason: `Advanced edit revert Order #${orderId}`,
-              previousStock,
-              newStock,
-              userId: req.user!.id
-            }
-          });
+        // LEGACY only: restore accessory Pillow.stock. INVENTORY uses reservation reconcile below.
+        if (!skipLegacyAccessoryStock) {
+          for (const pi of currentOrder.pillowItems) {
+            const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+              SELECT id, stock FROM Pillow WHERE id = ${pi.pillowId} FOR UPDATE
+            `;
+            const pillow = locked[0];
+            if (!pillow) continue;
+            const previousStock = pillow.stock;
+            const newStock = previousStock + pi.quantity;
+            await tx.pillow.update({
+              where: { id: pi.pillowId },
+              data: { stock: newStock }
+            });
+            await tx.pillowStockHistory.create({
+              data: {
+                pillowId: pi.pillowId,
+                quantity: pi.quantity,
+                type: 'ADJUSTMENT',
+                reason: `Advanced edit revert Order #${orderId}`,
+                previousStock,
+                newStock,
+                userId: req.user!.id
+              }
+            });
+          }
         }
       }
 
@@ -1492,6 +1619,21 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
         : calculatedTotal.add(calculatedPillowTotal);
       const finalStatus = status || currentOrder.status;
 
+      // TASK 8: location is fulfillment metadata only — never moves InventoryBalance / Transfer.
+      // Allow change only when stock has not been deducted for this order (PENDING / RETURNED).
+      let nextLocationId = currentOrder.locationId;
+      if (locationIdRaw !== undefined) {
+        nextLocationId = await resolveOptionalSellableLocationId(tx, locationIdRaw);
+        if (
+          nextLocationId !== currentOrder.locationId &&
+          !canChangeOrderFulfillmentLocation(currentOrder.status)
+        ) {
+          throw new Error(
+            'Cannot change fulfillment location after stock has been deducted (IN_PROCESS/DELIVERED). Location changes do not move inventory.'
+          );
+        }
+      }
+
       const order = await tx.order.update({
         where: { id: orderId },
         data: {
@@ -1505,6 +1647,7 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
           status: finalStatus,
           trackingCode,
           note,
+          locationId: nextLocationId,
           orderItems: {
             create: newOrderItems
           },
@@ -1528,7 +1671,8 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
             include: {
               pillow: true
             }
-          }
+          },
+          location: { select: orderLocationSelect },
         }
       });
 
@@ -1546,27 +1690,45 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
            });
         }
 
-        for (const pi of newPillowItems) {
-          const pillow = await tx.pillow.findUnique({ where: { id: pi.pillowId } });
-          if (!pillow) continue;
-          const previousStock = pillow.stock;
-          const newStock = previousStock - pi.quantity;
-          await tx.pillow.update({
-            where: { id: pi.pillowId },
-            data: { stock: newStock }
-          });
-          await tx.pillowStockHistory.create({
-            data: {
-              pillowId: pi.pillowId,
-              quantity: -pi.quantity,
-              type: 'OUTGOING',
-              reason: `Advanced edit apply Order #${orderId}`,
-              previousStock,
-              newStock,
-              userId: req.user!.id
-            }
-          });
+        // LEGACY only — INVENTORY accessories go through reservation reconcile
+        if (!skipLegacyAccessoryStock) {
+          for (const pi of newPillowItems) {
+            const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+              SELECT id, stock FROM Pillow WHERE id = ${pi.pillowId} FOR UPDATE
+            `;
+            const pillow = locked[0];
+            if (!pillow) continue;
+            const previousStock = pillow.stock;
+            const newStock = previousStock - pi.quantity;
+            if (newStock < 0) throw new Error('Insufficient pillow stock');
+            await tx.pillow.update({
+              where: { id: pi.pillowId },
+              data: { stock: newStock }
+            });
+            await tx.pillowStockHistory.create({
+              data: {
+                pillowId: pi.pillowId,
+                quantity: -pi.quantity,
+                type: 'OUTGOING',
+                reason: `Advanced edit apply Order #${orderId}`,
+                previousStock,
+                newStock,
+                userId: req.user!.id
+              }
+            });
+          }
         }
+      }
+
+      // INVENTORY: reconcile accessory reservation to new lines + status (never touch Pillow.stock)
+      if (skipLegacyAccessoryStock) {
+        await orderAccessoryInventory.reconcileOrderAccessoriesInTx(tx, {
+          orderId,
+          locationId: nextLocationId,
+          status: finalStatus,
+          lines: newPillowItems.map((pi) => ({ pillowId: pi.pillowId, quantity: pi.quantity })),
+          userId: req.user!.id,
+        });
       }
 
       return order;
@@ -1588,6 +1750,14 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
     res.json(updatedOrder);
 
   } catch (error) {
+    const locErr = orderLocationErrorToHttp(error);
+    if (locErr) return res.status(locErr.status).json(locErr.body);
+    const cutover = cutoverErrorToHttp(error);
+    if (cutover) return res.status(cutover.status).json(cutover.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
     console.error('Error performing full update:', error);
     res.status(500).json({ error: (error as Error).message || 'Failed to update order' });
   }
@@ -1629,7 +1799,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
           include: {
             variant: true
           }
-        }
+        },
+        pillowItems: true,
       }
     });
 
@@ -1637,33 +1808,38 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Restore stock if order was not cancelled/returned/pending
-    // Logic: If stock was deducted (IN_PROCESS, DELIVERED), restore it.
-    if (order.status === 'IN_PROCESS' || order.status === 'DELIVERED') {
-      for (const item of order.orderItems) {
-        await prisma.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.quantity } }
-        });
+    await prisma.$transaction(async (tx) => {
+      // INVENTORY: release/reverse reservation then detach FK before delete
+      await orderAccessoryInventory.prepareOrderDeleteInTx(tx, {
+        orderId,
+        userId: req.user!.id,
+      });
 
-        // Log stock restoration
-        await prisma.stockHistory.create({
-          data: {
-            variantId: item.variantId,
-            quantity: item.quantity,
-            type: 'ADJUSTMENT',
-            reason: `Order #${order.id} deleted (Restored)`,
-            previousStock: item.variant.stock, // Approximation
-            newStock: item.variant.stock + item.quantity,
-            userId: req.user!.id
-          }
-        });
+      // Restore mattress stock if order was not cancelled/returned/pending
+      if (order.status === 'IN_PROCESS' || order.status === 'DELIVERED') {
+        for (const item of order.orderItems) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stock: { increment: item.quantity } }
+          });
+
+          await tx.stockHistory.create({
+            data: {
+              variantId: item.variantId,
+              quantity: item.quantity,
+              type: 'ADJUSTMENT',
+              reason: `Order #${order.id} deleted (Restored)`,
+              previousStock: item.variant.stock,
+              newStock: item.variant.stock + item.quantity,
+              userId: req.user!.id
+            }
+          });
+        }
       }
-    }
 
-    // Delete order (cascade delete will handle order items)
-    await prisma.order.delete({
-      where: { id: orderId }
+      await tx.order.delete({
+        where: { id: orderId }
+      });
     });
 
     // Log activity
@@ -1683,6 +1859,10 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     res.json({ message: 'Order deleted successfully' });
   } catch (error) {
     console.error('Error deleting order:', error);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
     res.status(500).json({ error: 'Failed to delete order' });
   }
 });

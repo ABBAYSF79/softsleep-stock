@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "notes": "OPERATOR INPUT REQUIRED. Set warehouse and showroom integers per pillow so warehouse+showroom === Pillow.stock. presentation <= showroom. reserved will be 0. Do NOT invent values.",
+  "allocations": {
+    "1": {
+      "warehouse": null,
+      "showroom": null,
+      "presentation": 0,
+      "notes": "ice sleep — legacy stock 0 — LOCATION_UNKNOWN — fill warehouse+showroom == 0"
+    },
+    "2": {
+      "warehouse": null,
+      "showroom": null,
+      "presentation": 0,
+      "notes": "memoire de forme — legacy stock 0 — LOCATION_UNKNOWN — fill warehouse+showroom == 0"
+    }
+  }
+}

@@ -85,10 +85,17 @@ export function assertLivreurStatusTransition(oldStatus: OrderStatus, newStatus:
 }
 
 export function assertSuiviStatusTransition(oldStatus: OrderStatus, newStatus: OrderStatus): void {
-  if (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.IN_PROCESS) {
-    return;
-  }
-  throw new OrderAccessError('Suivi can only change status from PENDING to IN_PROCESS');
+  const allowed =
+    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.IN_PROCESS) ||
+    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.DELIVERED) ||
+    (oldStatus === OrderStatus.IN_PROCESS && newStatus === OrderStatus.DELIVERED) ||
+    (oldStatus === OrderStatus.IN_PROCESS && newStatus === OrderStatus.RETURNED);
+
+  if (allowed) return;
+
+  throw new OrderAccessError(
+    'Suivi can change PENDING→IN_PROCESS/DELIVERED or IN_PROCESS→DELIVERED/RETURNED'
+  );
 }
 
 export function denyLivreurMutation(user: User): void {

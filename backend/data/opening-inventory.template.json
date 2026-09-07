@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "cutoverDate": "2026-09-07",
+  "notes": "OPERATOR PHYSICAL COUNT. Fill real Warehouse/Showroom quantities. Do NOT copy from Pillow.stock automatically. Warehouse presentation must stay 0. Showroom presentation <= physical. Pillows: 1=ice sleep (old stock 68); 2=memoire de forme (old stock 0)",
+  "locations": {
+    "WH-MAIN": {
+      "1": {
+        "physical": 0,
+        "presentation": 0
+      },
+      "2": {
+        "physical": 0,
+        "presentation": 0
+      }
+    },
+    "SR-MAIN": {
+      "1": {
+        "physical": 0,
+        "presentation": 0
+      },
+      "2": {
+        "physical": 0,
+        "presentation": 0
+      }
+    }
+  }
+}

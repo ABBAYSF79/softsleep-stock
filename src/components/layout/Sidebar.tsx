@@ -120,7 +120,11 @@ export const Sidebar = ({
               )}
               <ul className="space-y-0.5">
                 {groupItems.map((item) => {
-                  const isActive = location.pathname === item.path;
+                  const isActive = item.exact
+                    ? location.pathname === item.path
+                    : location.pathname === item.path ||
+                      (item.path !== "/" &&
+                        location.pathname.startsWith(`${item.path}/`));
                   const Icon = item.icon;
 
                   return (

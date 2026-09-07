@@ -22,7 +22,6 @@ import { FloatingActionBar } from "@/components/common/FloatingActionBar";
 import { OrderManagementDialog } from "@/components/orders/OrderManagementDialog";
 import { OrderGuaranteeDialog } from "@/components/orders/OrderGuaranteeDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
-import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Select,
@@ -43,13 +42,15 @@ import {
   useDeleteOrder,
   useDeliveryServices,
   usePaginatedOrders,
+  useUpdateOrderStatus,
   useUsers,
 } from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
 import { exportOrdersToExcel } from "@/utils/excel-export";
-import { exportSelectedOrdersToPdfArabic } from "@/utils/order-management-pdf";
+import { exportSelectedOrdersToPdf } from "@/utils/order-management-pdf";
+import { OrderQuickStatusControl } from "@/components/orders/OrderQuickStatusControl";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
 import { Activity, BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, MessageSquare, MoreHorizontal, Pencil, Plus, Printer, RotateCw, Search, Trash2, X } from "lucide-react";
@@ -62,7 +63,9 @@ const OrderManagement = () => {
   const isAdmin = user?.role === "ADMIN";
   const isLivreur = user?.role === "LIVREUR";
   const isSuivi = user?.role === "SUIVI";
+  const isSales = user?.role === "SALES";
 
+  const updateOrderStatus = useUpdateOrderStatus();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<any>(null);
 
@@ -206,6 +209,14 @@ const OrderManagement = () => {
     setIsDialogOpen(true);
   };
 
+  const handleQuickStatusChange = useCallback(
+    async (args: { id: number; status: string; trackingCode?: string }) => {
+      await updateOrderStatus.mutateAsync(args);
+      toast.success(`Order #${args.id} → ${args.status}`);
+    },
+    [updateOrderStatus]
+  );
+
   const handleDialogClose = (open: boolean) => {
     if (!open) {
       setViewingOrder(null);
@@ -318,7 +329,8 @@ const OrderManagement = () => {
     try {
       await exportOrdersToExcel(
         selectedOrders,
-        `orders-selected-${new Date().toISOString().slice(0, 10)}.xlsx`
+        `orders-selected-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'management'
       );
       toast.success("Excel exported");
       clearSelection();
@@ -330,7 +342,7 @@ const OrderManagement = () => {
   const handleBulkPdf = useCallback(async () => {
     if (!selectedOrders.length) return;
     try {
-      await exportSelectedOrdersToPdfArabic(
+      await exportSelectedOrdersToPdf(
         selectedOrders,
         `orders-selected-${new Date().toISOString().slice(0, 10)}.pdf`
       );
@@ -601,7 +613,9 @@ const OrderManagement = () => {
                     isAdmin={isAdmin}
                     isLivreur={isLivreur}
                     isSuivi={isSuivi}
+                    isSales={isSales}
                     isSelected={selectedIds.has(Number(order.id))}
+                    statusBusy={updateOrderStatus.isPending}
                     onRowClick={handleViewOrder}
                     onToggleSelected={handleToggleSelected}
                     onCopyPhone={copyToClipboard}
@@ -612,6 +626,7 @@ const OrderManagement = () => {
                     onNavigateAdvanced={handleNavigateAdvanced}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
+                    onQuickStatusChange={handleQuickStatusChange}
                   />
                 ))
               )}
@@ -679,7 +694,9 @@ const OrderManagement = () => {
                         isAdmin={isAdmin}
                         isLivreur={isLivreur}
                         isSuivi={isSuivi}
+                        isSales={isSales}
                         isSelected={selectedIds.has(Number(order.id))}
+                        statusBusy={updateOrderStatus.isPending}
                         onRowClick={handleViewOrder}
                         onToggleSelected={handleToggleSelected}
                         onCopyPhone={copyToClipboard}
@@ -690,6 +707,7 @@ const OrderManagement = () => {
                         onNavigateAdvanced={handleNavigateAdvanced}
                         onDelete={handleDeleteClick}
                         onCopyOrderInfo={handleCopyOrderInfo}
+                        onQuickStatusChange={handleQuickStatusChange}
                       />
                     ))
                   )}
@@ -834,7 +852,9 @@ type OrderRowProps = {
   isAdmin: boolean;
   isLivreur: boolean;
   isSuivi: boolean;
+  isSales?: boolean;
   isSelected: boolean;
+  statusBusy?: boolean;
   onRowClick: (order: any) => void;
   onToggleSelected: (id: number) => void;
   onCopyPhone: (value: string) => void;
@@ -845,6 +865,11 @@ type OrderRowProps = {
   onNavigateAdvanced: (id: number) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
+  onQuickStatusChange: (args: {
+    id: number;
+    status: string;
+    trackingCode?: string;
+  }) => void | Promise<void>;
 };
 
 const OrderMobileCard = memo(function OrderMobileCard({
@@ -852,7 +877,9 @@ const OrderMobileCard = memo(function OrderMobileCard({
   isAdmin,
   isLivreur,
   isSuivi,
+  isSales = false,
   isSelected,
+  statusBusy,
   onRowClick,
   onToggleSelected,
   onCopyPhone,
@@ -863,6 +890,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
+  onQuickStatusChange,
 }: OrderRowProps) {
   const orderItems = Array.isArray(order.items) ? order.items : [];
 
@@ -929,8 +957,16 @@ const OrderMobileCard = memo(function OrderMobileCard({
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">Status</span>
-        <div className="whitespace-nowrap">
-          <OrderStatusBadge status={order.status} />
+        <div className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+          <OrderQuickStatusControl
+            order={order}
+            isAdmin={isAdmin}
+            isSuivi={isSuivi}
+            isLivreur={isLivreur}
+            isSales={isSales}
+            disabled={statusBusy}
+            onConfirmStatus={onQuickStatusChange}
+          />
         </div>
       </div>
 
@@ -1062,7 +1098,9 @@ const OrderRow = memo(function OrderRow({
   isAdmin,
   isLivreur,
   isSuivi,
+  isSales = false,
   isSelected,
+  statusBusy,
   onRowClick,
   onToggleSelected,
   onCopyPhone,
@@ -1073,6 +1111,7 @@ const OrderRow = memo(function OrderRow({
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
+  onQuickStatusChange,
 }: OrderRowProps) {
   return (
     <TableRow
@@ -1153,9 +1192,17 @@ const OrderRow = memo(function OrderRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="px-3 py-2.5">
+      <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         <div className="whitespace-nowrap">
-          <OrderStatusBadge status={order.status} />
+          <OrderQuickStatusControl
+            order={order}
+            isAdmin={isAdmin}
+            isSuivi={isSuivi}
+            isLivreur={isLivreur}
+            isSales={isSales}
+            disabled={statusBusy}
+            onConfirmStatus={onQuickStatusChange}
+          />
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-muted-foreground">

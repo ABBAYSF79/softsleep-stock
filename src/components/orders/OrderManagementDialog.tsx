@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
@@ -24,13 +23,50 @@ import {
 } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Car, MessageSquare, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Car,
+  MessageSquare,
+  Package,
+  Plus,
+  Trash2,
+  Truck,
+  UserRound,
+} from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode, sanitizePhoneInput, validatePhone } from "@/utils/order-utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+
+const fieldClass =
+  "h-10 border-slate-200 bg-white shadow-none focus-visible:ring-matles-500/30 focus-visible:ring-offset-0";
+
+const fieldDisabledClass =
+  "h-10 border-slate-200 bg-slate-50 text-slate-700 shadow-none disabled:cursor-default disabled:opacity-100";
+
+function InfoField({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("space-y-1", className)}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="min-h-[28px] text-sm font-medium text-slate-900 break-words">
+        {value || <span className="font-normal text-slate-400">—</span>}
+      </div>
+    </div>
+  );
+}
 
 interface OrderManagementDialogProps {
   open: boolean;
@@ -96,7 +132,8 @@ export const OrderManagementDialog = ({
     user?.role === "ADMIN" || user?.role === "SALES" || user?.role === "SUIVI";
   const canEditTrackingCode = isViewing && (isAdmin || isSuivi) && status === "IN_PROCESS";
   const canLivreurMarkDelivered = isViewing && isLivreur && originalStatus === "PENDING";
-  const canSuiviUpdateStatus = isViewing && isSuivi && originalStatus === "PENDING";
+  const canSuiviUpdateStatus =
+    isViewing && isSuivi && (originalStatus === "PENDING" || originalStatus === "IN_PROCESS");
   const savedLivreurNote = (order?.livreurNote ?? "").trim();
   const savedSalesNote = (order?.note ?? "").trim();
   const canEditSalesNote =
@@ -526,68 +563,105 @@ export const OrderManagementDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-2xl border-slate-200 p-0 sm:max-h-[90vh] sm:w-[90vw] sm:max-w-[90vw]">
-        <DialogHeader className="shrink-0 border-b border-slate-100 bg-slate-50/70 px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
-          <DialogTitle className="text-lg text-slate-900">
+      <DialogContent
+        className={cn(
+          "flex max-h-[min(92dvh,920px)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-2xl border-slate-200 p-0 shadow-xl",
+          isViewing
+            ? "sm:w-[min(94vw,1100px)] sm:max-w-[1100px]"
+            : "sm:w-[min(94vw,920px)] sm:max-w-[920px]"
+        )}
+      >
+        <DialogHeader className="shrink-0 space-y-1 border-b border-slate-100 px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
+          <DialogTitle className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
             {isViewing ? `Order #${order.id}` : "Create New Order"}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-sm text-slate-500">
-            {isViewing ? "View or update order details" : "Fill in the details to create a new order"}
+          <DialogDescription className="text-sm text-slate-500">
+            {isViewing
+              ? "Détails structurés — client, livraison, articles."
+              : "Client, livraison, produits et accessoires."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 sm:px-6">
           {isViewing ? (
-          <div className="space-y-6 py-4 sm:py-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Order Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Customer</Label>
-                      <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Phone</Label>
-                      <Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Address</Label>
-                      <Input value={address} onChange={(e) => setAddress(e.target.value)} disabled />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sales Person</Label>
-                      <Input value={order?.user?.name} disabled />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Confirmation user</Label>
-                      <Input
-                        value={
-                          order?.confirmationUser?.name
-                            ? `${order.confirmationUser.name}${order.confirmationUser.phone ? ` (${order.confirmationUser.phone})` : ""}`
-                            : "-"
-                        }
-                        disabled
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date</Label>
-                      <Input type="date" value={new Date(order?.createdAt).toISOString().split("T")[0]} disabled />
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Status</Label>
+          <div className="space-y-5 py-4 sm:space-y-6 sm:py-5">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <OrderStatusBadge status={status} />
+                <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                  <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+                  {order?.createdAt
+                    ? format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")
+                    : "—"}
+                </span>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Total
+                </p>
+                <p className="text-lg font-semibold tabular-nums tracking-tight text-slate-900">
+                  MAD {formatPrice(manualTotalNumber ?? calculateGrandTotal())}
+                </p>
+              </div>
+            </div>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+                  <UserRound className="h-3.5 w-3.5" aria-hidden />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-800">Client</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2 sm:gap-5 sm:p-4">
+                <InfoField label="Customer" value={customerName} />
+                <InfoField label="Phone" value={phone} />
+                <InfoField label="Address" value={address} className="sm:col-span-2" />
+                <InfoField label="Sales person" value={order?.user?.name} />
+                <InfoField
+                  label="Confirmation user"
+                  value={
+                    order?.confirmationUser?.name
+                      ? `${order.confirmationUser.name}${
+                          order.confirmationUser.phone
+                            ? ` (${order.confirmationUser.phone})`
+                            : ""
+                        }`
+                      : null
+                  }
+                />
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+                  <Truck className="h-3.5 w-3.5" aria-hidden />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-800">Livraison & statut</h3>
+              </div>
+
+              <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700">Status</Label>
                       {isAdmin ? (
                         <Select value={status} onValueChange={handleStatusChange}>
-                          <SelectTrigger>
+                          <SelectTrigger className={fieldClass}>
                             <SelectValue placeholder="Select status" />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.values(ORDER_STATUSES).map((s) => (
+                            {Object.values(ORDER_STATUSES)
+                              .filter((s) => {
+                                // PENDING has no stock reservation — cannot return
+                                if (
+                                  originalStatus === "PENDING" &&
+                                  s.value === "RETURNED"
+                                ) {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .map((s) => (
                               <SelectItem key={s.value} value={s.value}>
                                 {s.label}
                               </SelectItem>
@@ -595,385 +669,470 @@ export const OrderManagementDialog = ({
                           </SelectContent>
                         </Select>
                       ) : canLivreurMarkDelivered ? (
-                        <Select value={status} onValueChange={handleStatusChange}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="PENDING">Pending</SelectItem>
-                            <SelectItem value="DELIVERED">Delivered</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : canSuiviUpdateStatus ? (
-                        <Select value={status} onValueChange={handleStatusChange}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="PENDING">Pending</SelectItem>
-                            <SelectItem value="IN_PROCESS">In Process</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="pt-2">
-                          <OrderStatusBadge status={status} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      {showLivreurNoteSection && (
-                        <div className="space-y-2">
-                          <Label className="flex items-center gap-1.5 text-amber-950">
-                            <MessageSquare className="h-4 w-4" />
-                            Note livreur
-                          </Label>
-                          {savedLivreurNote ? (
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 whitespace-pre-wrap">
-                              {savedLivreurNote}
-                            </div>
-                          ) : (
-                            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-sm text-muted-foreground">
-                              —
-                            </div>
+                      <Select value={status} onValueChange={handleStatusChange}>
+                        <SelectTrigger className={fieldClass}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="DELIVERED">Delivered</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : canSuiviUpdateStatus ? (
+                      <Select value={status} onValueChange={handleStatusChange}>
+                        <SelectTrigger className={fieldClass}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {originalStatus === "PENDING" && (
+                            <>
+                              <SelectItem value="PENDING">Pending</SelectItem>
+                              <SelectItem value="IN_PROCESS">In Process</SelectItem>
+                              <SelectItem value="DELIVERED">Delivered</SelectItem>
+                            </>
                           )}
-                        </div>
+                          {originalStatus === "IN_PROCESS" && (
+                            <>
+                              <SelectItem value="IN_PROCESS">In Process</SelectItem>
+                              <SelectItem value="DELIVERED">Delivered</SelectItem>
+                              <SelectItem value="RETURNED">Returned</SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex h-10 items-center">
+                        <OrderStatusBadge status={status} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      className={cn(
+                        "text-slate-700",
+                        status === "IN_PROCESS" &&
+                          !trackingCode &&
+                          "flex items-center gap-2 text-red-600"
                       )}
-
-                      {canEditSalesNote ? (
-                        <div className="space-y-2">
-                          <Label>Note sales</Label>
-                          <Input
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                            placeholder="Note de l'équipe commerciale"
-                          />
-                        </div>
-                      ) : isViewing && savedSalesNote ? (
-                        <div className="space-y-2">
-                          <Label>Note sales</Label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 whitespace-pre-wrap">
-                            {savedSalesNote}
-                          </div>
-                        </div>
-                      ) : isViewing ? (
-                        <div className="space-y-2">
-                          <Label>Note sales</Label>
-                          <Input value="—" disabled />
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="deliveryService">Delivery Service</Label>
-                        {isAdmin ? (
-                          <SearchableSelect
-                            value={selectedDeliveryService}
-                            onValueChange={(value) => {
-                              setSelectedDeliveryService(value);
-                              setSelectedCity("");
-                            }}
-                            options={
-                              selectableDeliveryServices.map((service: any) => ({
-                                label: service.name,
-                                value: service.id.toString(),
-                              }))
-                            }
-                            placeholder="Select delivery service"
-                            searchPlaceholder="Search service..."
-                          />
-                        ) : (
-                          <Input value={deliveryServiceName || ""} readOnly />
+                    >
+                      Tracking code
+                      {status === "IN_PROCESS" && !trackingCode && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-normal text-red-600 animate-pulse">
+                          <AlertTriangle className="h-3 w-3" />
+                          Required
+                        </span>
+                      )}
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={trackingCode}
+                        onChange={(e) => setTrackingCode(e.target.value)}
+                        placeholder="Tracking code"
+                        disabled={!canEditTrackingCode}
+                        className={cn(
+                          canEditTrackingCode ? fieldClass : fieldDisabledClass,
+                          status === "IN_PROCESS" &&
+                            !trackingCode &&
+                            "border-red-300 bg-red-50/30 focus-visible:ring-red-500/40"
                         )}
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Delivery City</Label>
-                          <SearchableSelect
-                            value={selectedCity}
-                            onValueChange={setSelectedCity}
-                            options={
-                              selectedServiceCities.map((city: string) => ({
-                                label: city,
-                                value: city,
-                              })) || []
-                            }
-                            placeholder="Select city"
-                            searchPlaceholder="Search city..."
-                            disabled={!isAdmin}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label className={status === "IN_PROCESS" && !trackingCode ? "text-red-600 flex items-center gap-2" : ""}>
-                            Tracking Code
-                            {status === "IN_PROCESS" && !trackingCode && (
-                              <span className="text-xs font-normal bg-red-100 text-red-600 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                <AlertTriangle className="h-3 w-3" />
-                                Required
-                              </span>
-                            )}
-                          </Label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={trackingCode}
-                              onChange={(e) => setTrackingCode(e.target.value)}
-                              placeholder="Tracking Code"
-                              disabled={!canEditTrackingCode}
-                              className={status === "IN_PROCESS" && !trackingCode ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
-                            />
-                            {canEditTrackingCode && order?.id != null && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-10 w-10 shrink-0"
-                                    onClick={() => {
-                                      const code = generateAmanaTrackingCode(order.id);
-                                      setTrackingCode(code);
-                                      toast.success(`Tracking code generated: ${code}`);
-                                    }}
-                                    aria-label="Generate Amana tracking code"
-                                  >
-                                    <Car className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Generate Amana tracking code
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      />
+                      {canEditTrackingCode && order?.id != null && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0 border-slate-200"
+                              onClick={() => {
+                                const code = generateAmanaTrackingCode(order.id);
+                                setTrackingCode(code);
+                                toast.success(`Tracking code generated: ${code}`);
+                              }}
+                              aria-label="Generate Amana tracking code"
+                            >
+                              <Car className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Generate Amana tracking code</TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="deliveryService" className="text-slate-700">
+                      Delivery service
+                    </Label>
+                    {isAdmin ? (
+                      <SearchableSelect
+                        value={selectedDeliveryService}
+                        onValueChange={(value) => {
+                          setSelectedDeliveryService(value);
+                          setSelectedCity("");
+                        }}
+                        options={selectableDeliveryServices.map((service: any) => ({
+                          label: service.name,
+                          value: service.id.toString(),
+                        }))}
+                        placeholder="Select delivery service"
+                        searchPlaceholder="Search service..."
+                      />
+                    ) : (
+                      <Input
+                        value={deliveryServiceName || ""}
+                        readOnly
+                        className={fieldDisabledClass}
+                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700">Delivery city</Label>
+                    <SearchableSelect
+                      value={selectedCity}
+                      onValueChange={setSelectedCity}
+                      options={
+                        selectedServiceCities.map((city: string) => ({
+                          label: city,
+                          value: city,
+                        })) || []
+                      }
+                      placeholder="Select city"
+                      searchPlaceholder="Search city..."
+                      disabled={!isAdmin}
+                    />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Items</CardTitle>
-                <Badge variant="secondary" className="tabular-nums">
+                <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 sm:gap-4">
+                  {showLivreurNoteSection && (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="flex items-center gap-1.5 text-amber-950">
+                        <MessageSquare className="h-4 w-4" />
+                        Note livreur
+                      </Label>
+                      {savedLivreurNote ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm whitespace-pre-wrap text-amber-900">
+                          {savedLivreurNote}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-sm text-slate-400">
+                          —
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {canEditSalesNote ? (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-slate-700">Note sales</Label>
+                      <Input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Note de l'équipe commerciale"
+                        className={fieldClass}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-slate-700">Note sales</Label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm whitespace-pre-wrap text-slate-800">
+                        {savedSalesNote || "—"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-2.5 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-matles-50 text-matles-700 ring-1 ring-inset ring-matles-100">
+                    <Package className="h-3.5 w-3.5" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-slate-800">Articles</h3>
+                    <p className="text-xs text-slate-500">Produits et accessoires</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="shrink-0 tabular-nums">
                   {orderItems.length + pillowItems.length}
                 </Badge>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                  <div className="overflow-x-auto rounded-lg border">
-                  <div className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:min-w-0">
-                    <div>Product</div>
+              </div>
+
+              <div className="space-y-3 p-3 sm:p-4">
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_56px_88px_96px] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                    <div>Produit</div>
                     <div className="text-right">Qty</div>
-                    <div className="text-right">Price</div>
+                    <div className="text-right">Prix</div>
                     <div className="text-right">Total</div>
                   </div>
-
                   {orderItems.length ? (
-                    orderItems.map((it: any, idx: number) => {
-                      const unit =
-                        typeof it?.price === "object"
-                          ? parseFloat(String(it.price?.toString?.() ?? 0))
-                          : Number(it?.price ?? 0);
-                      const qty = Number(it?.quantity ?? 0);
-                      const lineTotal = unit * qty;
+                    <ul className="divide-y divide-slate-100">
+                      {orderItems.map((it: any, idx: number) => {
+                        const unit =
+                          typeof it?.price === "object"
+                            ? parseFloat(String(it.price?.toString?.() ?? 0))
+                            : Number(it?.price ?? 0);
+                        const qty = Number(it?.quantity ?? 0);
+                        const lineTotal = unit * qty;
+                        const productName =
+                          it?.product?.name ||
+                          it?.variant?.product?.name ||
+                          it?.productName ||
+                          "-";
+                        const variantLabel = it?.variant?.name || "-";
 
-                      const productName = it?.product?.name || it?.variant?.product?.name || it?.productName || "-";
-                      const variantLabel = it?.variant?.name || "-";
-
-                      return (
-                        <div
-                          key={`${it?.variantId ?? "v"}-${idx}`}
-                          className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm sm:min-w-0"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{productName}</div>
-                            <div className="text-xs text-muted-foreground truncate">{variantLabel}</div>
-                          </div>
-                          <div className="text-right tabular-nums">{qty}</div>
-                          <div className="text-right tabular-nums">MAD {formatPrice(unit)}</div>
-                          <div className="text-right tabular-nums font-medium">MAD {formatPrice(lineTotal)}</div>
-                        </div>
-                      );
-                    })
+                        return (
+                          <li
+                            key={`${it?.variantId ?? "v"}-${idx}`}
+                            className="grid grid-cols-1 gap-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_56px_88px_96px] sm:items-center sm:gap-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-800">
+                                {productName}
+                              </p>
+                              <p className="truncate text-xs text-slate-500">{variantLabel}</p>
+                              <p className="text-xs text-slate-500 sm:hidden">
+                                qty {qty} · MAD {formatPrice(unit)} · MAD {formatPrice(lineTotal)}
+                              </p>
+                            </div>
+                            <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                              {qty}
+                            </div>
+                            <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                              {formatPrice(unit)}
+                            </div>
+                            <div className="hidden text-right text-sm font-semibold tabular-nums text-slate-900 sm:block">
+                              {formatPrice(lineTotal)}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   ) : (
-                    <div className="px-3 py-6 text-sm text-muted-foreground">No items</div>
+                    <div className="px-3 py-6 text-center text-sm text-slate-500">
+                      No products
+                    </div>
                   )}
                 </div>
 
                 {pillowItems.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border">
-                    <div className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:min-w-0">
-                      <div>Accessoire (supplement)</div>
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <div className="hidden grid-cols-[minmax(0,1fr)_56px_88px_96px] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                      <div>Accessoire</div>
                       <div className="text-right">Qty</div>
-                      <div className="text-right">Price</div>
+                      <div className="text-right">Prix</div>
                       <div className="text-right">Total</div>
                     </div>
-                    {pillowItems.map((pi: any, idx: number) => {
-                      const unit =
-                        typeof pi?.price === "object"
-                          ? parseFloat(String(pi.price?.toString?.() ?? 0))
-                          : Number(pi?.price ?? 0);
-                      const qty = Number(pi?.quantity ?? 0);
-                      const lineTotal = unit * qty;
-                      return (
-                        <div
-                          key={`${pi?.pillowId ?? "p"}-${idx}`}
-                          className="grid min-w-[460px] grid-cols-[1fr_110px_110px_120px] gap-3 border-t px-3 py-2 text-sm sm:min-w-0"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{pi?.pillowName || "-"}</div>
-                            <div className="text-xs text-muted-foreground truncate">Supplement</div>
-                          </div>
-                          <div className="text-right tabular-nums">{qty}</div>
-                          <div className="text-right tabular-nums">MAD {formatPrice(unit)}</div>
-                          <div className="text-right tabular-nums font-medium">MAD {formatPrice(lineTotal)}</div>
-                        </div>
-                      );
-                    })}
+                    <ul className="divide-y divide-slate-100">
+                      {pillowItems.map((pi: any, idx: number) => {
+                        const unit =
+                          typeof pi?.price === "object"
+                            ? parseFloat(String(pi.price?.toString?.() ?? 0))
+                            : Number(pi?.price ?? 0);
+                        const qty = Number(pi?.quantity ?? 0);
+                        const lineTotal = unit * qty;
+                        return (
+                          <li
+                            key={`${pi?.pillowId ?? "p"}-${idx}`}
+                            className="grid grid-cols-1 gap-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_56px_88px_96px] sm:items-center sm:gap-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-800">
+                                {pi?.pillowName || "-"}
+                              </p>
+                              <p className="text-xs text-slate-500">Supplement</p>
+                              <p className="text-xs text-slate-500 sm:hidden">
+                                qty {qty} · MAD {formatPrice(unit)} · MAD {formatPrice(lineTotal)}
+                              </p>
+                            </div>
+                            <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                              {qty}
+                            </div>
+                            <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                              {formatPrice(unit)}
+                            </div>
+                            <div className="hidden text-right text-sm font-semibold tabular-nums text-slate-900 sm:block">
+                              {formatPrice(lineTotal)}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
-                  <div className="text-sm font-medium">Order total</div>
-                  <div className="text-sm font-semibold tabular-nums">
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 sm:px-4">
+                  <span className="text-sm font-medium text-slate-600">Order total</span>
+                  <span className="text-base font-semibold tabular-nums text-slate-900">
                     MAD {formatPrice(manualTotalNumber ?? calculateGrandTotal())}
-                  </div>
+                  </span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
         ) : (
-          <div className="grid min-w-0 gap-6 py-4 sm:py-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Customer & delivery</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Customer name</Label>
-                    <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" autoFocus />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className={phoneError ? "text-red-600" : ""}>
-                      Phone <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      inputMode="tel"
-                      value={phone}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      onBlur={handlePhoneBlur}
-                      placeholder="+212 6XX XXX XXX"
-                      className={phoneError ? "border-red-300 focus-visible:ring-red-500 bg-red-50/30" : ""}
-                      aria-invalid={Boolean(phoneError)}
-                      aria-describedby={phoneError ? "phone-error" : undefined}
-                    />
-                    {phoneError ? (
-                      <p id="phone-error" className="text-xs text-red-600">
-                        {phoneError}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Required — numbers, spaces, and + only
-                      </p>
+          <div className="space-y-5 py-4 sm:space-y-6 sm:py-5">
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+                  <Truck className="h-3.5 w-3.5" aria-hidden />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-800">Client & livraison</h3>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-slate-700">Customer name</Label>
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Customer name"
+                    autoFocus
+                    className={fieldClass}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="phone" className={cn("text-slate-700", phoneError && "text-red-600")}>
+                    Phone <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    onBlur={handlePhoneBlur}
+                    placeholder="+212 6XX XXX XXX"
+                    className={cn(
+                      fieldClass,
+                      phoneError && "border-red-300 bg-red-50/30 focus-visible:ring-red-500/40"
                     )}
-                  </div>
+                    aria-invalid={Boolean(phoneError)}
+                    aria-describedby={phoneError ? "phone-error" : undefined}
+                  />
+                  {phoneError ? (
+                    <p id="phone-error" className="text-xs text-red-600">
+                      {phoneError}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500">Required — numbers, spaces, and + only</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="address" className="text-slate-700">
+                    Address
+                  </Label>
                   <Input
                     id="address"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     placeholder="Address"
+                    className={fieldClass}
                   />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="deliveryService">Delivery service</Label>
-                    <SearchableSelect
-                      value={selectedDeliveryService}
-                      onValueChange={(value) => {
-                        setSelectedDeliveryService(value);
-                        setSelectedCity("");
-                      }}
-                      options={
-                        selectableDeliveryServices.map((service: any) => ({
-                          label: service.name,
-                          value: service.id.toString(),
-                        }))
-                      }
-                      placeholder="Select delivery service"
-                      searchPlaceholder="Search service..."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>City</Label>
-                    <SearchableSelect
-                      value={selectedCity}
-                      onValueChange={setSelectedCity}
-                      options={selectedServiceCities.map((city: string) => ({ label: city, value: city })) || []}
-                      placeholder="Select city"
-                      searchPlaceholder="Search city..."
-                      disabled={!selectedDeliveryService}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="deliveryService" className="text-slate-700">
+                    Delivery service
+                  </Label>
+                  <SearchableSelect
+                    value={selectedDeliveryService}
+                    onValueChange={(value) => {
+                      setSelectedDeliveryService(value);
+                      setSelectedCity("");
+                    }}
+                    options={
+                      selectableDeliveryServices.map((service: any) => ({
+                        label: service.name,
+                        value: service.id.toString(),
+                      }))
+                    }
+                    placeholder="Select delivery service"
+                    searchPlaceholder="Search service..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-slate-700">City</Label>
+                  <SearchableSelect
+                    value={selectedCity}
+                    onValueChange={setSelectedCity}
+                    options={
+                      selectedServiceCities.map((city: string) => ({ label: city, value: city })) ||
+                      []
+                    }
+                    placeholder={
+                      selectedDeliveryService ? "Select city" : "Choose service first"
+                    }
+                    searchPlaceholder="Search city..."
+                    disabled={!selectedDeliveryService}
+                  />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Confirmation user</Label>
-                    <SearchableSelect
-                      value={selectedConfirmationUser}
-                      onValueChange={setSelectedConfirmationUser}
-                      options={[
-                        { label: "None", value: "none" },
-                        ...(Array.isArray(confirmationUsers)
-                          ? confirmationUsers
-                              .filter((u) => u.active)
-                              .map((u) => ({
-                                label: `${u.name}${u.linkedSalesUser ? ` (Linked to ${u.linkedSalesUser.name})` : ""}`,
-                                value: u.id.toString(),
-                              }))
-                          : []),
-                      ]}
-                      placeholder="None"
-                      searchPlaceholder="Search confirmation user..."
-                    />
+                <div className="space-y-1.5">
+                  <Label className="text-slate-700">Confirmation user</Label>
+                  <SearchableSelect
+                    value={selectedConfirmationUser}
+                    onValueChange={setSelectedConfirmationUser}
+                    options={[
+                      { label: "None", value: "none" },
+                      ...(Array.isArray(confirmationUsers)
+                        ? confirmationUsers
+                            .filter((u) => u.active)
+                            .map((u) => ({
+                              label: `${u.name}${u.linkedSalesUser ? ` (Linked to ${u.linkedSalesUser.name})` : ""}`,
+                              value: u.id.toString(),
+                            }))
+                        : []),
+                    ]}
+                    placeholder="None"
+                    searchPlaceholder="Search confirmation user..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-slate-700">Note sales</Label>
+                  <Input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Note de l'équipe commerciale"
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-2.5 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-matles-50 text-matles-700 ring-1 ring-inset ring-matles-100">
+                    <Package className="h-3.5 w-3.5" aria-hidden />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Note sales</Label>
-                    <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note de l'équipe commerciale" />
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-slate-800">Produits & accessoires</h3>
+                    <p className="text-xs text-slate-500">Ajoutez au moins un produit</p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Items</CardTitle>
-                <Badge variant="secondary" className="tabular-nums">
+                <Badge variant="secondary" className="shrink-0 tabular-nums">
                   {orderItems.length + pillowItems.length}
                 </Badge>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              </div>
+
+              <div className="space-y-4 p-3 sm:p-4">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleAddItem();
                   }}
-                  className="grid grid-cols-1 items-end gap-3 sm:grid-cols-12"
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_auto] sm:items-end"
                 >
-                  <div className="col-span-1 space-y-2 sm:col-span-8">
-                    <Label>Product</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700">Product</Label>
                     <SearchableSelect
                       value={selectedVariant}
                       onValueChange={(value) => {
@@ -1002,53 +1161,95 @@ export const OrderManagementDialog = ({
                       searchPlaceholder="Search product..."
                     />
                   </div>
-
-                  <div className="col-span-1 space-y-2 sm:col-span-2">
-                    <Label>Qty</Label>
-                    <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700">Qty</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={quantity}
+                      onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                      className={cn(fieldClass, "tabular-nums")}
+                    />
                   </div>
-
-                  <div className="col-span-1 sm:col-span-2">
-                    <Button type="submit" className="w-full" disabled={!selectedVariant}>
-                      Add
-                    </Button>
-                  </div>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={!selectedVariant}
+                    className="h-10 border-slate-200 bg-white text-slate-700 hover:border-matles-300 hover:bg-matles-50 hover:text-matles-800"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" aria-hidden />
+                    Add
+                  </Button>
                 </form>
 
                 {lowStockWarning && (
-                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                    <p className="text-sm text-red-800 font-medium">{lowStockWarning}</p>
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                    <p className="text-sm font-medium text-red-800">{lowStockWarning}</p>
                   </div>
                 )}
 
-                <div className="space-y-2 overflow-x-auto">
-                  <table className="w-full min-w-[480px] sm:min-w-0">
-                    <tbody>
+                {orderItems.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 px-3 py-6 text-center text-sm text-slate-500">
+                    Aucun produit ajouté pour le moment.
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <div className="hidden grid-cols-[minmax(0,1fr)_56px_88px_88px_40px] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                      <div>Produit</div>
+                      <div className="text-right">Qty</div>
+                      <div className="text-right">Prix</div>
+                      <div className="text-right">Ligne</div>
+                      <div />
+                    </div>
+                    <ul className="divide-y divide-slate-100">
                       {orderItems.map((item, index) => (
-                        <tr key={index} className="border-b">
-                          <td className="py-2">
-                            <div>
-                              <div className="font-medium">{item.product?.name}</div>
-                              <div className="text-sm text-gray-500">{item.variant?.name}</div>
-                            </div>
-                          </td>
-                          <td className="text-right py-2 tabular-nums">{item.quantity}</td>
-                          <td className="text-right py-2 tabular-nums">MAD {formatPrice(item.price)}</td>
-                          <td className="text-right py-2 tabular-nums">MAD {formatPrice(item.price * item.quantity)}</td>
-                          <td className="text-right py-2">
-                            <Button variant="ghost" size="sm" onClick={() => handleRemoveItem(index)} className="h-8 w-8 p-0">
+                        <li
+                          key={index}
+                          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_56px_88px_88px_40px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-800">
+                              {item.product?.name}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">{item.variant?.name}</p>
+                            <p className="text-xs text-slate-500 sm:hidden">
+                              qty {item.quantity} · MAD {formatPrice(item.price)} · MAD{" "}
+                              {formatPrice(item.price * item.quantity)}
+                            </p>
+                          </div>
+                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                            {item.quantity}
+                          </div>
+                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                            {formatPrice(item.price)}
+                          </div>
+                          <div className="hidden text-right text-sm font-semibold tabular-nums text-slate-900 sm:block">
+                            {formatPrice(item.price * item.quantity)}
+                          </div>
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveItem(index)}
+                              className="h-8 w-8 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              aria-label="Remove product"
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          </td>
-                        </tr>
+                          </div>
+                        </li>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </ul>
+                  </div>
+                )}
 
-                <div className="border rounded-md p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">Accessoires (supplement)</div>
+                <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Accessoires</p>
+                      <p className="text-xs text-slate-500">Supplement (optional)</p>
+                    </div>
                     <Badge variant="secondary" className="tabular-nums">
                       {pillowItems.length}
                     </Badge>
@@ -1059,10 +1260,10 @@ export const OrderManagementDialog = ({
                       e.preventDefault();
                       handleAddPillow();
                     }}
-                    className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-12"
+                    className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_auto] sm:items-end"
                   >
-                    <div className="col-span-1 space-y-2 sm:col-span-8">
-                      <Label>Accessoire</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-slate-700">Accessoire</Label>
                       <SearchableSelect
                         value={selectedPillowId}
                         onValueChange={setSelectedPillowId}
@@ -1077,84 +1278,116 @@ export const OrderManagementDialog = ({
                         searchPlaceholder="Search accessoire..."
                       />
                     </div>
-                    <div className="col-span-1 space-y-2 sm:col-span-2">
-                      <Label>Qty</Label>
-                      <Input type="number" min="1" value={pillowQty} onChange={(e) => setPillowQty(parseInt(e.target.value) || 1)} />
+                    <div className="space-y-1.5">
+                      <Label className="text-slate-700">Qty</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={pillowQty}
+                        onChange={(e) => setPillowQty(parseInt(e.target.value) || 1)}
+                        className={cn(fieldClass, "tabular-nums")}
+                      />
                     </div>
-                    <div className="col-span-1 sm:col-span-2">
-                      <Button type="submit" className="w-full" disabled={!selectedPillowId}>
-                        Add
-                      </Button>
-                    </div>
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      disabled={!selectedPillowId}
+                      className="h-10 border-slate-200 bg-white text-slate-700 hover:border-matles-300 hover:bg-matles-50 hover:text-matles-800"
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" aria-hidden />
+                      Add
+                    </Button>
                   </form>
 
                   {pillowItems.length > 0 && (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full min-w-[420px] sm:min-w-0">
-                        <tbody>
-                          {pillowItems.map((pi: any) => (
-                            <tr key={pi.pillowId} className="border-b">
-                              <td className="py-2">
-                                <div className="font-medium">{pi.pillowName}</div>
-                              </td>
-                              <td className="text-right py-2 tabular-nums">{pi.quantity}</td>
-                              <td className="text-right py-2 tabular-nums">MAD {formatPrice(pi.price)}</td>
-                              <td className="text-right py-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRemovePillow(pi.pillowId)}
-                                  className="h-8 w-8 p-0"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ul className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+                      {pillowItems.map((pi: any) => (
+                        <li
+                          key={pi.pillowId}
+                          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_56px_88px_40px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-800">
+                              {pi.pillowName}
+                            </p>
+                            <p className="text-xs text-slate-500 sm:hidden">
+                              qty {pi.quantity} · MAD {formatPrice(pi.price)}
+                            </p>
+                          </div>
+                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                            {pi.quantity}
+                          </div>
+                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
+                            {formatPrice(pi.price)}
+                          </div>
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemovePillow(pi.pillowId)}
+                              className="h-8 w-8 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              aria-label="Remove accessoire"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 md:items-end">
-                  {canOverrideTotal && (
-                    <div className="space-y-2">
-                      <Label>Override total</Label>
+                <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-4">
+                  {canOverrideTotal ? (
+                    <div className="w-full space-y-1.5 sm:max-w-[200px]">
+                      <Label className="text-slate-700">Override total</Label>
                       <Input
                         type="number"
                         value={manualTotal !== null ? manualTotal : ""}
-                        onChange={(e) => setManualTotal(e.target.value !== "" ? parseFloat(e.target.value) : null)}
+                        onChange={(e) =>
+                          setManualTotal(e.target.value !== "" ? parseFloat(e.target.value) : null)
+                        }
                         placeholder="Optional"
+                        className={cn(fieldClass, "tabular-nums")}
                       />
                     </div>
+                  ) : (
+                    <div />
                   )}
-
-                  <div className="space-y-2 md:justify-self-end md:text-right">
-                    <div className="flex justify-between md:justify-end md:gap-10">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-medium tabular-nums">MAD {calculateGrandTotal().toFixed(2)}</span>
+                  <div className="w-full space-y-1.5 sm:w-auto sm:min-w-[220px] sm:text-right">
+                    <div className="flex justify-between gap-6 text-sm sm:justify-end">
+                      <span className="text-slate-500">Subtotal</span>
+                      <span className="font-medium tabular-nums text-slate-800">
+                        MAD {calculateGrandTotal().toFixed(2)}
+                      </span>
                     </div>
-                    <div className="flex justify-between md:justify-end md:gap-10">
-                      <span className="text-muted-foreground">Commission</span>
-                      <span className="font-medium tabular-nums">MAD {calculateCommission(calculateTotal()).toFixed(2)}</span>
+                    <div className="flex justify-between gap-6 text-sm sm:justify-end">
+                      <span className="text-slate-500">Commission</span>
+                      <span className="font-medium tabular-nums text-slate-800">
+                        MAD {calculateCommission(calculateTotal()).toFixed(2)}
+                      </span>
                     </div>
-                    <div className="flex justify-between border-t pt-2 text-lg font-bold md:justify-end md:gap-10">
-                      <span>Total</span>
-                      <span className="tabular-nums">
+                    <div className="flex justify-between gap-6 border-t border-slate-100 pt-2 sm:justify-end">
+                      <span className="text-sm font-semibold text-slate-800">Total</span>
+                      <span className="text-lg font-semibold tabular-nums tracking-tight text-slate-900">
                         MAD {(manualTotalNumber ?? calculateGrandTotal()).toFixed(2)}
                       </span>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
           )}
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:px-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0 gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:flex-row sm:justify-end sm:space-x-0 sm:px-6 sm:py-4">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="h-10 border-slate-200"
+          >
             {isViewing ? "Close" : "Cancel"}
           </Button>
           {(!isViewing ||
@@ -1164,10 +1397,20 @@ export const OrderManagementDialog = ({
                 note !== order?.note ||
                 trackingCode !== order?.trackingCode ||
                 (!isSuivi && deliveryChanged)))) && (
-            <Button onClick={handleSubmit}>{isViewing ? "Update Order" : "Create Order"}</Button>
+            <Button
+              onClick={handleSubmit}
+              className="h-10 bg-matles-600 hover:bg-matles-700 active:scale-[0.98]"
+            >
+              {isViewing ? "Update Order" : "Create Order"}
+            </Button>
           )}
           {isViewing && canLivreurMarkDelivered && status === "DELIVERED" && (
-            <Button onClick={handleSubmit}>Mark as delivered</Button>
+            <Button
+              onClick={handleSubmit}
+              className="h-10 bg-matles-600 hover:bg-matles-700 active:scale-[0.98]"
+            >
+              Mark as delivered
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

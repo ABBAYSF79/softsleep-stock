@@ -30,6 +30,17 @@ import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
 import TeamOverview2 from "@/pages/TeamOverview2";
 import AdvancedEdit from "@/pages/AdvancedEdit";
+import InventoryOverviewPage from "@/pages/inventory/InventoryOverviewPage";
+import InventoryStockPage from "@/pages/inventory/InventoryStockPage";
+import InventoryReconciliationPage from "@/pages/inventory/InventoryReconciliationPage";
+import InventoryLocationsPage from "@/pages/inventory/InventoryLocationsPage";
+import InventoryTransfersPage from "@/pages/inventory/InventoryTransfersPage";
+import InventoryTransferDetailPage from "@/pages/inventory/InventoryTransferDetailPage";
+import InventoryDocumentsPage from "@/pages/inventory/InventoryDocumentsPage";
+import InventoryDocumentDetailPage from "@/pages/inventory/InventoryDocumentDetailPage";
+import InventoryHistoryPage from "@/pages/inventory/InventoryHistoryPage";
+import InventoryReservationsPage from "@/pages/inventory/InventoryReservationsPage";
+import InventoryCutoverPage from "@/pages/inventory/InventoryCutoverPage";
 import { LayoutDashboard, Package, ShoppingCart, LineChart, UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -64,6 +75,61 @@ const App = () => (
             <Route path="/stock" element={
               <ProtectedRoute adminOnly>
                 <Stock />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory" element={
+              <ProtectedRoute adminOnly>
+                <InventoryOverviewPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/stock" element={
+              <ProtectedRoute adminOnly>
+                <InventoryStockPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/locations" element={
+              <ProtectedRoute adminOnly>
+                <InventoryLocationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/transfers" element={
+              <ProtectedRoute adminOnly>
+                <InventoryTransfersPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/transfers/:id" element={
+              <ProtectedRoute adminOnly>
+                <InventoryTransferDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/documents" element={
+              <ProtectedRoute adminOnly>
+                <InventoryDocumentsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/documents/:id" element={
+              <ProtectedRoute adminOnly>
+                <InventoryDocumentDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/reservations" element={
+              <ProtectedRoute adminOnly>
+                <InventoryReservationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/history" element={
+              <ProtectedRoute adminOnly>
+                <InventoryHistoryPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/reconciliation" element={
+              <ProtectedRoute adminOnly>
+                <InventoryReconciliationPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/cutover" element={
+              <ProtectedRoute adminOnly>
+                <InventoryCutoverPage />
               </ProtectedRoute>
             } />
             <Route path="/pillow-stock" element={

@@ -23,6 +23,157 @@ function safeExcelFilename(name: string): string {
     .replace(/^[-_.]+|[-_.]+$/g, '');
 }
 
+export type TeamOverviewExportMeta = {
+  periodLabel: string;
+  periodKey?: string;
+  statusLabel: string;
+  confirmationUserLabel: string;
+  productLabel?: string;
+  searchTerm?: string;
+  orderCount: number;
+};
+
+/** Filename encodes active filters for quick tracking. */
+export function buildTeamOverviewExportFilename(
+  meta: TeamOverviewExportMeta,
+  ext: 'xlsx' | 'pdf'
+): string {
+  const parts = [
+    'team-overview',
+    meta.periodKey || meta.periodLabel,
+    meta.statusLabel !== 'All' ? `status-${meta.statusLabel}` : null,
+    meta.confirmationUserLabel !== 'All'
+      ? `cu-${meta.confirmationUserLabel}`
+      : null,
+    meta.productLabel && meta.productLabel !== 'All'
+      ? `product-${meta.productLabel}`
+      : null,
+    format(new Date(), 'yyyy-MM-dd'),
+  ].filter(Boolean) as string[];
+
+  return safeExcelFilename(`${parts.join('_')}.${ext}`);
+}
+
+export function buildTeamOverviewFilterLines(meta: TeamOverviewExportMeta): string[] {
+  const lines = [
+    `Période: ${meta.periodLabel}`,
+    `Statut: ${meta.statusLabel}`,
+    `Confirmation: ${meta.confirmationUserLabel}`,
+  ];
+  if (meta.productLabel && meta.productLabel !== 'All') {
+    lines.push(`Produit: ${meta.productLabel}`);
+  }
+  if (meta.searchTerm?.trim()) {
+    lines.push(`Recherche: ${meta.searchTerm.trim()}`);
+  }
+  lines.push(`Commandes: ${meta.orderCount}`);
+  return lines;
+}
+
+export async function exportTeamOverviewToExcel(
+  orders: any[],
+  filename: string,
+  filterLines: string[]
+) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Team Overview');
+
+  worksheet.addRow(['Team Overview — Export']);
+  worksheet.getRow(1).font = { bold: true, size: 14 };
+  worksheet.addRow([`Exporté le ${format(new Date(), 'yyyy-MM-dd HH:mm')}`]);
+  worksheet.addRow([]);
+  worksheet.addRow(['Filtres appliqués']);
+  worksheet.getRow(4).font = { bold: true };
+  filterLines.forEach((line) => worksheet.addRow([line]));
+  worksheet.addRow([]);
+
+  const headerRow = worksheet.addRow([
+    'Order',
+    'Date',
+    'Client',
+    'Téléphone',
+    'Ville',
+    'Confirmation',
+    'Statut',
+    'Prix',
+    'Produit',
+    'Note',
+  ]);
+  headerRow.font = { bold: true };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE8E8EC' },
+  };
+
+  worksheet.getColumn(1).width = 10;
+  worksheet.getColumn(2).width = 16;
+  worksheet.getColumn(3).width = 22;
+  worksheet.getColumn(4).width = 15;
+  worksheet.getColumn(5).width = 14;
+  worksheet.getColumn(6).width = 20;
+  worksheet.getColumn(7).width = 12;
+  worksheet.getColumn(8).width = 12;
+  worksheet.getColumn(9).width = 48;
+  worksheet.getColumn(10).width = 28;
+
+  let prixTotal = 0;
+  orders.forEach((order) => {
+    const createdAt = order?.createdAt ? new Date(order.createdAt) : null;
+    const items = Array.isArray(order?.items) ? order.items : [];
+    const itemsString = items
+      .map(
+        (item: any) =>
+          `${item?.quantity ?? 0}x ${item?.product?.name || item?.productName || 'Unknown'} (${item?.variant?.name || item?.variantName || 'Unknown'})`
+      )
+      .join(', ');
+    const amount = Number(order?.totalAmount ?? 0);
+    prixTotal += amount;
+
+    worksheet.addRow([
+      order?.id ?? '',
+      createdAt ? format(createdAt, 'yyyy-MM-dd HH:mm') : '',
+      order?.customerName ?? '',
+      order?.phone || '',
+      order?.city || '',
+      order?.confirmationUser?.name || '',
+      order?.status || '',
+      amount,
+      itemsString,
+      typeof order?.note === 'string' ? order.note : '',
+    ]);
+  });
+
+  if (orders.length > 0) {
+    const totalRow = worksheet.addRow([
+      '',
+      '',
+      'TOTAL',
+      '',
+      '',
+      '',
+      '',
+      prixTotal,
+      '',
+      '',
+    ]);
+    totalRow.font = { bold: true };
+    totalRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF3F4F6' },
+    };
+  }
+
+  worksheet.getColumn(8).numFmt = '#,##0.00';
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  saveAs(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+}
+
 /** Builds `.xlsx` name: period preset + date range + optional filter tags. */
 export function buildProductOverviewExcelFilename(opts: {
   dateFilter: string;
@@ -98,25 +249,42 @@ export async function exportProductOverviewToExcel(
   saveAs(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
 }
 
-export const exportOrdersToExcel = async (orders: any[], filename = 'orders-export.xlsx') => {
+export type OrdersExcelVariant = 'full' | 'management';
+
+export const exportOrdersToExcel = async (
+  orders: any[],
+  filename = 'orders-export.xlsx',
+  variant: OrdersExcelVariant = 'full'
+) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Orders');
+  const isManagement = variant === 'management';
 
-  // Define columns
-  worksheet.columns = [
-    { header: 'Order', key: 'id', width: 10 },
-    { header: 'Date', key: 'date', width: 18 },
-    { header: 'Nom', key: 'customerName', width: 20 },
-    { header: 'Telephone', key: 'phone', width: 15 },
-    { header: 'Ville', key: 'city', width: 15 },
-    { header: 'Service Livraison', key: 'deliveryService', width: 20 },
-    { header: 'Tracking', key: 'trackingCode', width: 18 },
-    { header: 'Statut', key: 'status', width: 14 },
-    { header: 'Adresse', key: 'address', width: 28 },
-    { header: 'Prix', key: 'totalAmount', width: 15 },
-    { header: 'Produit', key: 'items', width: 50 },
-    { header: 'Note', key: 'note', width: 28 },
-  ];
+  worksheet.columns = isManagement
+    ? [
+        { header: 'Order', key: 'id', width: 10 },
+        { header: 'Nom', key: 'customerName', width: 20 },
+        { header: 'Telephone', key: 'phone', width: 15 },
+        { header: 'Ville', key: 'city', width: 15 },
+        { header: 'Tracking', key: 'trackingCode', width: 18 },
+        { header: 'Prix', key: 'totalAmount', width: 15 },
+        { header: 'Produit', key: 'items', width: 50 },
+        { header: 'Note', key: 'note', width: 28 },
+      ]
+    : [
+        { header: 'Order', key: 'id', width: 10 },
+        { header: 'Date', key: 'date', width: 18 },
+        { header: 'Nom', key: 'customerName', width: 20 },
+        { header: 'Telephone', key: 'phone', width: 15 },
+        { header: 'Ville', key: 'city', width: 15 },
+        { header: 'Service Livraison', key: 'deliveryService', width: 20 },
+        { header: 'Tracking', key: 'trackingCode', width: 18 },
+        { header: 'Statut', key: 'status', width: 14 },
+        { header: 'Adresse', key: 'address', width: 28 },
+        { header: 'Prix', key: 'totalAmount', width: 15 },
+        { header: 'Produit', key: 'items', width: 50 },
+        { header: 'Note', key: 'note', width: 28 },
+      ];
 
   // Style header row
   worksheet.getRow(1).font = { bold: true };
@@ -127,13 +295,29 @@ export const exportOrdersToExcel = async (orders: any[], filename = 'orders-expo
   };
 
   // Add data rows
+  let prixTotal = 0;
   orders.forEach(order => {
     const createdAt = order?.createdAt ? new Date(order.createdAt) : null;
     const items = Array.isArray(order?.items) ? order.items : [];
-    // Format items string
     const itemsString = items.map((item: any) => 
       `${item?.quantity ?? 0}x ${item?.product?.name || item?.productName || 'Unknown'} (${item?.variant?.name || item?.variantName || 'Unknown'})`
     ).join(', ');
+    const amount = Number(order?.totalAmount ?? 0);
+    prixTotal += amount;
+
+    if (isManagement) {
+      worksheet.addRow({
+        id: order?.id ?? '',
+        customerName: order.customerName,
+        phone: order.phone || '',
+        city: order.city || '',
+        trackingCode: order?.trackingCode || '',
+        totalAmount: amount,
+        items: itemsString,
+        note: typeof order?.note === 'string' ? order.note : '',
+      });
+      return;
+    }
 
     worksheet.addRow({
       id: order?.id ?? '',
@@ -145,11 +329,31 @@ export const exportOrdersToExcel = async (orders: any[], filename = 'orders-expo
       trackingCode: order?.trackingCode || '',
       status: order?.status || '',
       address: order?.address || '',
-      totalAmount: Number(order?.totalAmount ?? 0),
+      totalAmount: amount,
       items: itemsString,
       note: typeof order?.note === 'string' ? order.note : '',
     });
   });
+
+  if (isManagement && orders.length > 0) {
+    const totalRow = worksheet.addRow({
+      id: '',
+      customerName: 'TOTAL',
+      phone: '',
+      city: '',
+      trackingCode: '',
+      totalAmount: prixTotal,
+      items: '',
+      note: '',
+    });
+    totalRow.font = { bold: true };
+    totalRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF3F4F6' },
+    };
+    worksheet.getColumn('totalAmount').numFmt = '#,##0.00';
+  }
 
   // Generate buffer and save file
   const buffer = await workbook.xlsx.writeBuffer();

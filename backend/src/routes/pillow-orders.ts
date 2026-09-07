@@ -1,9 +1,22 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware, adminOnly } from '../middleware/auth';
+import {
+  orderLocationErrorToHttp,
+  orderLocationSelect,
+  resolveOptionalSellableLocationId,
+} from '../utils/order-location';
+import { getInventoryMode } from '../services/InventoryMode';
+import { OrderAccessoryInventory } from '../services/OrderAccessoryInventory';
+import { reservationErrorToHttp, ReservationDomainError } from '../services/ReservationService';
+import { cutoverErrorToHttp, CutoverFreezeService } from '../services/CutoverFreezeService';
+import { LegacyOrderTransitionService } from '../services/LegacyOrderTransitionService';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const orderAccessoryInventory = new OrderAccessoryInventory(prisma);
+const cutoverFreeze = new CutoverFreezeService(prisma);
+const legacyTransitions = new LegacyOrderTransitionService(prisma);
 
 router.get('/', authMiddleware, async (req, res) => {
   try {
@@ -43,6 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
       include: {
         user: true,
         deliveryService: true,
+        location: { select: orderLocationSelect },
         items: {
           include: {
             pillow: true,
@@ -62,6 +76,8 @@ router.get('/', authMiddleware, async (req, res) => {
         city: o.city,
         deliveryServiceId: o.deliveryServiceId,
         deliveryService: o.deliveryService ? { id: o.deliveryService.id, name: o.deliveryService.name } : null,
+        locationId: o.locationId,
+        location: o.location,
         status: o.status,
         totalAmount: o.totalAmount,
       isPaid: o.isPaid,
@@ -119,6 +135,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const deliveryServiceId = hasDeliveryService ? Number(deliveryServiceIdRaw) : null;
     const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
     const totalAmountRaw = req.body?.totalAmount;
+    const locationIdRaw = req.body?.locationId;
 
     if (
       deliveryServiceId !== null &&
@@ -127,6 +144,25 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Invalid delivery service' });
     }
     if (itemsRaw.length === 0) return res.status(400).json({ error: 'At least 1 pillow item is required' });
+
+    let resolvedLocationId: number | null = null;
+    try {
+      resolvedLocationId = await resolveOptionalSellableLocationId(prisma, locationIdRaw);
+    } catch (error) {
+      const mapped = orderLocationErrorToHttp(error);
+      if (mapped) return res.status(mapped.status).json(mapped.body);
+      throw error;
+    }
+
+    const inventoryMode = await getInventoryMode(prisma);
+    if (inventoryMode === 'INVENTORY') {
+      if (!resolvedLocationId) {
+        return res.status(400).json({
+          error: 'A sellable fulfillment location is required when inventory mode is active',
+          code: 'INVENTORY_LOCATION_REQUIRED',
+        });
+      }
+    }
 
     const consolidated = new Map<number, number>();
     for (const row of itemsRaw) {
@@ -144,9 +180,12 @@ router.post('/', authMiddleware, async (req, res) => {
 
       const pillowById = new Map(pillows.map((p) => [p.id, p]));
 
-      for (const [pillowId, qty] of consolidated.entries()) {
-        const pillow = pillowById.get(pillowId)!;
-        if (pillow.stock - qty < 0) throw new Error('Insufficient stock');
+      // LEGACY: validate against Pillow.stock. INVENTORY: ReservationService validates available.
+      if (inventoryMode === 'LEGACY') {
+        for (const [pillowId, qty] of consolidated.entries()) {
+          const pillow = pillowById.get(pillowId)!;
+          if (pillow.stock - qty < 0) throw new Error('Insufficient stock');
+        }
       }
 
       const total = Array.from(consolidated.entries()).reduce((sum, [pillowId, qty]) => {
@@ -171,6 +210,7 @@ router.post('/', authMiddleware, async (req, res) => {
           address,
           city: city || null,
           deliveryServiceId,
+          locationId: resolvedLocationId,
           totalAmount: finalTotal,
           items: {
             create: Array.from(consolidated.entries()).map(([pillowId, qty]) => {
@@ -182,30 +222,49 @@ router.post('/', authMiddleware, async (req, res) => {
         include: {
           user: true,
           deliveryService: true,
+          location: { select: orderLocationSelect },
           items: { include: { pillow: true } },
         },
       });
 
-      for (const [pillowId, qty] of consolidated.entries()) {
-        const pillow = pillowById.get(pillowId)!;
-        const previousStock = pillow.stock;
-        const newStock = previousStock - qty;
+      if (inventoryMode === 'LEGACY') {
+        await cutoverFreeze.assertNotFrozen(tx, 'legacy pillow-order create');
+        for (const [pillowId, qty] of consolidated.entries()) {
+          const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+            SELECT id, stock FROM Pillow WHERE id = ${pillowId} FOR UPDATE
+          `;
+          const pillow = locked[0];
+          if (!pillow) throw new Error('Pillow not found');
+          const previousStock = pillow.stock;
+          const newStock = previousStock - qty;
+          if (newStock < 0) throw new Error('Insufficient stock');
 
-        await tx.pillow.update({
-          where: { id: pillowId },
-          data: { stock: newStock },
-        });
+          await tx.pillow.update({
+            where: { id: pillowId },
+            data: { stock: newStock },
+          });
 
-        await tx.pillowStockHistory.create({
-          data: {
+          await tx.pillowStockHistory.create({
+            data: {
+              pillowId,
+              quantity: -qty,
+              type: 'OUTGOING',
+              reason: `Pillow order #${created.id}`,
+              previousStock,
+              newStock,
+              userId: req.user.id,
+            },
+          });
+        }
+      } else {
+        await orderAccessoryInventory.reservePillowOrderInTx(tx, {
+          pillowOrderId: created.id,
+          locationId: resolvedLocationId,
+          lines: Array.from(consolidated.entries()).map(([pillowId, quantity]) => ({
             pillowId,
-            quantity: -qty,
-            type: 'OUTGOING',
-            reason: `Pillow order #${created.id}`,
-            previousStock,
-            newStock,
-            userId: req.user.id,
-          },
+            quantity,
+          })),
+          userId: req.user.id,
         });
       }
 
@@ -222,6 +281,14 @@ router.post('/', authMiddleware, async (req, res) => {
 
     res.status(201).json(result);
   } catch (error: any) {
+    const locErr = orderLocationErrorToHttp(error);
+    if (locErr) return res.status(locErr.status).json(locErr.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
+    const cutover = cutoverErrorToHttp(error);
+    if (cutover) return res.status(cutover.status).json(cutover.body);
     if (error instanceof Error && error.message === 'Pillow not found') {
       return res.status(404).json({ error: 'Pillow not found' });
     }
@@ -263,55 +330,78 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
         throw new Error('Locked');
       }
 
+      const inventoryMode = await getInventoryMode(tx);
+
+      if (inventoryMode === 'INVENTORY') {
+        await orderAccessoryInventory.onStatusChangeInTx(tx, {
+          source: 'PILLOW_ORDER',
+          orderId: id,
+          oldStatus: existing.status,
+          newStatus: status,
+          userId: req.user.id,
+          hasAccessoryLines: (existing.items || []).length > 0,
+        });
+      } else if (existing.status !== 'RETURNED' && status === 'RETURNED') {
+        await cutoverFreeze.assertNotFrozen(tx, 'legacy pillow-order return');
+        const gate = await legacyTransitions.gateInventoryAffectingChange(
+          'PILLOW_ORDER',
+          id,
+          (existing.items || []).length > 0
+        );
+        if (gate !== 'SKIP_INVENTORY') {
+          for (const item of existing.items) {
+            const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+              SELECT id, stock FROM Pillow WHERE id = ${item.pillowId} FOR UPDATE
+            `;
+            const pillow = locked[0];
+            if (!pillow) continue;
+
+            const previousStock = pillow.stock;
+            const newStock = previousStock + item.quantity;
+
+            await tx.pillow.update({
+              where: { id: item.pillowId },
+              data: { stock: newStock },
+            });
+
+            await tx.pillowStockHistory.create({
+              data: {
+                pillowId: item.pillowId,
+                quantity: item.quantity,
+                type: 'ADJUSTMENT',
+                reason: `Return pillow order #${id}`,
+                previousStock,
+                newStock,
+                userId: req.user.id,
+              },
+            });
+          }
+
+          await tx.activity.create({
+            data: {
+              userId: req.user.id,
+              type: 'PILLOW_ORDER_RETURNED',
+              description: `Returned pillow order #${id}`,
+            },
+          });
+        }
+      }
+
       const updated = await tx.pillowOrder.update({
         where: { id },
         data: { status: status as any },
         include: {
           user: true,
           deliveryService: true,
+          location: { select: orderLocationSelect },
           items: { include: { pillow: true } },
         },
       });
 
-      if (existing.status !== 'RETURNED' && status === 'RETURNED') {
-        for (const item of existing.items) {
-          const pillow = await tx.pillow.findUnique({ where: { id: item.pillowId } });
-          if (!pillow) continue;
-
-          const previousStock = pillow.stock;
-          const newStock = previousStock + item.quantity;
-
-          await tx.pillow.update({
-            where: { id: item.pillowId },
-            data: { stock: newStock },
-          });
-
-          await tx.pillowStockHistory.create({
-            data: {
-              pillowId: item.pillowId,
-              quantity: item.quantity,
-              type: 'ADJUSTMENT',
-              reason: `Return pillow order #${id}`,
-              previousStock,
-              newStock,
-              userId: req.user.id,
-            },
-          });
-        }
-
-        await tx.activity.create({
-          data: {
-            userId: req.user.id,
-            type: 'PILLOW_ORDER_RETURNED',
-            description: `Returned pillow order #${id}`,
-          },
-        });
-      }
-
-      return updated;
+      return { existing, updated };
     });
 
-    res.json(result);
+    res.json(result.updated);
   } catch (error: any) {
     if (error instanceof Error && error.message === 'Not found') {
       return res.status(404).json({ error: 'Order not found' });
@@ -322,6 +412,12 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
     if (error instanceof Error && error.message === 'Locked') {
       return res.status(400).json({ error: 'Returned orders cannot be reopened' });
     }
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
+    const cutover = cutoverErrorToHttp(error);
+    if (cutover) return res.status(cutover.status).json(cutover.body);
     console.error('Error updating pillow order status:', error);
     res.status(500).json({ error: 'Failed to update status' });
   }

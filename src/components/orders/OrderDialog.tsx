@@ -364,7 +364,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
           confirmationUserId: selectedConfirmationUser === "none" ? null : parseInt(selectedConfirmationUser),
           note,
           status: "PENDING",
-          trackingCode: undefined
+          trackingCode: undefined,
         };
         
         console.log('Creating order with data:', JSON.stringify(orderData, null, 2));
@@ -442,7 +442,14 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                           <SelectValue placeholder="Select status" />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.values(ORDER_STATUSES).map((s) => (
+                          {Object.values(ORDER_STATUSES)
+                            .filter((s) => {
+                              if (order?.status === "PENDING" && s.value === "RETURNED") {
+                                return false;
+                              }
+                              return true;
+                            })
+                            .map((s) => (
                             <SelectItem key={s.value} value={s.value}>
                               {s.label}
                             </SelectItem>

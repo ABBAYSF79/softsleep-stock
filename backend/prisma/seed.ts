@@ -12,6 +12,7 @@
 import { PrismaClient, Prisma, OrderStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { seedLocations } from '../scripts/seed-locations';
 
 dotenv.config();
 
@@ -121,6 +122,10 @@ async function main() {
   console.log(
     `Volumes → orders: ${ORDER_COUNT}, products: ${PRODUCT_COUNT}, extra sales: ${EXTRA_SALES}`
   );
+
+  // Always ensure inventory locations exist (does not touch Pillow.stock).
+  await seedLocations(prisma);
+  console.log('Locations seeded (idempotent): WH-MAIN, SR-MAIN');
 
   await prisma.commissionSettings.create({
     data: {
