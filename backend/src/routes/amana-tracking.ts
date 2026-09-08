@@ -32,7 +32,11 @@ router.get('/order/:orderId', authMiddleware, async (req, res) => {
     const mapped = amanaTrackingErrorToHttp(error);
     if (mapped) return res.status(mapped.status).json(mapped.body);
     console.error('Error fetching AMANA tracking:', error);
-    res.status(500).json({ error: 'Failed to retrieve tracking', code: 'INTERNAL' });
+    res.status(500).json({
+      error: 'Failed to retrieve tracking',
+      code: 'INTERNAL',
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 

@@ -231,6 +231,16 @@ export function AmanaTrackingSheet({
                 {(query.error as any)?.response?.data?.error ||
                   "We couldn't retrieve the latest AMANA tracking information."}
               </p>
+              {(query.error as any)?.response?.data?.detail ? (
+                <p className="break-all text-xs text-slate-400">
+                  {(query.error as any).response.data.detail}
+                </p>
+              ) : null}
+              {(query.error as any)?.response?.data?.code ? (
+                <p className="text-xs tabular-nums text-slate-400">
+                  code: {(query.error as any).response.data.code}
+                </p>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"

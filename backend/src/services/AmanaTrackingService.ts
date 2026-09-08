@@ -1,3 +1,6 @@
+import https from 'https';
+import http from 'http';
+import { URL } from 'url';
 import { PrismaClient, User } from '@prisma/client';
 import {
   assertCanAccessOrder,
@@ -12,7 +15,7 @@ import {
 
 const DEFAULT_AMANA_URL = 'https://bam-tracking.barid.ma/Tracking/Search';
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 25_000;
 
 type CacheEntry = {
   expiresAt: number;
@@ -24,7 +27,8 @@ const trackingCache = new Map<string, CacheEntry>();
 export class AmanaTrackingError extends Error {
   constructor(
     message: string,
-    public readonly code: string = 'TRACKING_ERROR'
+    public readonly code: string = 'TRACKING_ERROR',
+    public readonly detail?: string
   ) {
     super(message);
     this.name = 'AmanaTrackingError';
@@ -47,7 +51,11 @@ export function amanaTrackingErrorToHttp(error: unknown): { status: number; body
     };
     return {
       status: statusByCode[error.code] ?? 400,
-      body: { error: error.message, code: error.code },
+      body: {
+        error: error.message,
+        code: error.code,
+        ...(error.detail ? { detail: error.detail } : {}),
+      },
     };
   }
   return null;
@@ -57,10 +65,75 @@ function cacheKey(trackingCode: string): string {
   return trackingCode.trim().toUpperCase();
 }
 
+type HttpGetResult = {
+  statusCode: number;
+  contentType: string;
+  body: string;
+};
+
+/**
+ * Production-safe HTTP GET (no dependency on global fetch / Node 18+).
+ */
+export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpGetResult> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const url = new URL(urlString);
+    const lib = url.protocol === 'http:' ? http : https;
+
+    const req = lib.request(
+      {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'http:' ? 80 : 443),
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: {
+          Accept: 'application/json, text/html, */*',
+          'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          Connection: 'close',
+        },
+        timeout: timeoutMs,
+        // Some hosts misbehave with keep-alive from Node
+        agent: false,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          if (settled) return;
+          settled = true;
+          resolve({
+            statusCode: res.statusCode || 0,
+            contentType: String(res.headers['content-type'] || ''),
+            body: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy();
+      if (settled) return;
+      settled = true;
+      reject(Object.assign(new Error('timeout'), { name: 'AbortError' }));
+    });
+
+    req.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
+
+    req.end();
+  });
+}
+
 export class AmanaTrackingService {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly fetchImpl: typeof fetch = fetch.bind(globalThis)
+    private readonly httpGet: typeof httpGetText = httpGetText
   ) {}
 
   clearCache(trackingCode?: string) {
@@ -118,53 +191,53 @@ export class AmanaTrackingService {
     const baseUrl = (process.env.AMANA_TRACKING_URL || DEFAULT_AMANA_URL).replace(/\/$/, '');
     const url = `${baseUrl}?trackingCode=${encodeURIComponent(trackingCode)}`;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    let response: Response;
+    let response: HttpGetResult;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json, text/html, */*',
-          'User-Agent':
-            'Mozilla/5.0 (compatible; SoftsleepStock/1.0; +https://mangesoftsleep.store)',
-        },
-        signal: controller.signal,
-      });
+      response = await this.httpGet(url, FETCH_TIMEOUT_MS);
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
+      const detail = err?.message || String(err);
+      console.error('[amana-tracking] upstream request failed', { url, detail });
+      if (err?.name === 'AbortError' || /timeout/i.test(detail)) {
         throw new AmanaTrackingError(
           'AMANA tracking request timed out',
-          'UPSTREAM_TIMEOUT'
+          'UPSTREAM_TIMEOUT',
+          detail
         );
       }
       throw new AmanaTrackingError(
-        'Unable to reach AMANA tracking service',
-        'UPSTREAM_ERROR'
+        'Unable to reach AMANA tracking service from the server',
+        'UPSTREAM_ERROR',
+        detail
       );
-    } finally {
-      clearTimeout(timer);
     }
 
-    if (!response.ok) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      console.error('[amana-tracking] upstream bad status', {
+        statusCode: response.statusCode,
+        preview: response.body.slice(0, 200),
+      });
       throw new AmanaTrackingError(
-        `AMANA tracking returned HTTP ${response.status}`,
-        'UPSTREAM_ERROR'
+        `AMANA tracking returned HTTP ${response.statusCode}`,
+        'UPSTREAM_ERROR',
+        response.body.slice(0, 200)
       );
     }
 
-    let html: string;
-    const contentType = response.headers.get('content-type') || '';
+    let html = '';
     try {
-      if (contentType.includes('application/json')) {
-        const json = (await response.json()) as { Html?: string; html?: string };
+      if (response.contentType.includes('application/json') || response.body.trim().startsWith('{')) {
+        const json = JSON.parse(response.body) as { Html?: string; html?: string };
         html = json.Html || json.html || '';
       } else {
-        html = await response.text();
+        html = response.body;
       }
-    } catch {
-      throw new AmanaTrackingError('Invalid response from AMANA tracking', 'PARSE_ERROR');
+    } catch (err: any) {
+      console.error('[amana-tracking] invalid JSON/HTML body', err?.message);
+      throw new AmanaTrackingError(
+        'Invalid response from AMANA tracking',
+        'PARSE_ERROR',
+        err?.message
+      );
     }
 
     if (!html || typeof html !== 'string') {
@@ -174,8 +247,13 @@ export class AmanaTrackingService {
     let parsed: ReturnType<typeof parseAmanaTrackingHtml>;
     try {
       parsed = parseAmanaTrackingHtml(html, trackingCode);
-    } catch {
-      throw new AmanaTrackingError('Failed to parse AMANA tracking HTML', 'PARSE_ERROR');
+    } catch (err: any) {
+      console.error('[amana-tracking] HTML parse failed', err?.message);
+      throw new AmanaTrackingError(
+        'Failed to parse AMANA tracking HTML',
+        'PARSE_ERROR',
+        err?.message
+      );
     }
 
     if (isEmptyAmanaTracking(parsed)) {
