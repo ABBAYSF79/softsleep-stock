@@ -99,6 +99,8 @@ export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpG
           port: url.port || (url.protocol === 'http:' ? 80 : 443),
           path: `${url.pathname}${url.search}`,
           method: 'GET',
+          // Many VPS have broken/unrouted IPv6 — prefer IPv4 to avoid long hangs.
+          family: 4,
           headers: {
             Accept: 'application/json, text/html, */*',
             'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',

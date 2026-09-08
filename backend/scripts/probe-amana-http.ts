@@ -1,37 +1,118 @@
 /**
- * Run on the VPS to verify outbound access to AMANA tracking.
- *   npx ts-node scripts/probe-amana-http.ts
+ * Diagnose AMANA reachability from the VPS.
+ *
+ *   npx ts-node scripts/probe-amana-http.ts QD136777911MA
  */
+import dns from 'dns';
+import net from 'net';
 import { httpGetText } from '../src/services/AmanaTrackingService';
+
+const HOST = 'bam-tracking.barid.ma';
+
+function raceTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+async function resolveDns() {
+  const started = Date.now();
+  try {
+    const v4 = await raceTimeout(
+      dns.promises.resolve4(HOST),
+      5000,
+      'DNS A'
+    );
+    console.log('DNS A (IPv4)', { ms: Date.now() - started, addresses: v4 });
+    return v4[0] as string | undefined;
+  } catch (e: any) {
+    console.error('DNS A FAIL', e?.message || e);
+  }
+
+  try {
+    const v6 = await raceTimeout(dns.promises.resolve6(HOST), 5000, 'DNS AAAA');
+    console.log('DNS AAAA (IPv6)', { ms: Date.now() - started, addresses: v6 });
+  } catch (e: any) {
+    console.error('DNS AAAA FAIL', e?.message || e);
+  }
+  return undefined;
+}
+
+function tcpConnect(host: string, port: number, ms: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const socket = net.connect({ host, port, family: 4 });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`TCP ${host}:${port} timeout after ${ms}ms`));
+    }, ms);
+    socket.on('connect', () => {
+      clearTimeout(timer);
+      socket.end();
+      resolve(Date.now() - started);
+    });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
 
 async function main() {
   const code = process.argv[2] || 'QD136777911MA';
-  const url = `https://bam-tracking.barid.ma/Tracking/Search?trackingCode=${encodeURIComponent(code)}`;
-  console.log('Probing AMANA from this machine…');
-  console.log(url);
+  console.log('=== AMANA VPS DIAGNOSTIC ===');
+  console.log('host:', HOST);
+
+  const ip = await resolveDns();
+  if (ip) {
+    try {
+      const ms = await tcpConnect(ip, 443, 8000);
+      console.log('TCP 443 OK', { ip, ms });
+    } catch (e: any) {
+      console.error('TCP 443 FAIL', { ip, message: e?.message || e });
+      console.error(
+        'Firewall may still block this IP, or the provider filters Barid Al Maghrib.'
+      );
+    }
+  }
+
+  const url = `https://${HOST}/Tracking/Search?trackingCode=${encodeURIComponent(code)}`;
+  console.log('HTTPS GET', url);
   const started = Date.now();
   try {
     const r = await httpGetText(url, 12000);
     const empty = /aucune information/i.test(r.body);
-    console.log('RESULT OK', {
+    console.log('HTTPS OK', {
       ms: Date.now() - started,
       status: r.statusCode,
       bytes: r.body.length,
       emptyNoInfoPage: empty,
     });
-    if (empty) {
-      console.log('AMANA returned an empty/no-info page for this code.');
-      process.exitCode = 2;
-    }
   } catch (e: any) {
-    console.error('RESULT FAIL', {
+    console.error('HTTPS FAIL', {
       ms: Date.now() - started,
       message: e?.message || String(e),
       code: e?.code,
     });
-    console.error(
-      'If this fails on VPS: allow outbound HTTPS to bam-tracking.barid.ma (firewall / security group).'
-    );
+    console.error(`
+Next checks on VPS:
+  dig +short ${HOST} A
+  curl -4 -v --max-time 15 "${url}"
+
+If curl also times out, outbound 443 to this host is still blocked or filtered
+(even if "HTTPS" is generally allowed). Ask the VPS provider to allow
+${HOST} / its IPv4 on port 443, or use a proxy/VPN egress.
+`);
     process.exitCode = 1;
   }
 }
