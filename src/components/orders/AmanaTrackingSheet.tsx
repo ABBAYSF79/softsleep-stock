@@ -274,21 +274,41 @@ export function AmanaTrackingSheet({
                 />
                 {suggestedStatus && suggestedStatus !== currentOrderStatus ? (
                   <div
-                    className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3"
+                    className={cn(
+                      "rounded-md border p-3",
+                      suggestedStatus === "DELIVERED"
+                        ? "border-emerald-200 bg-emerald-50/80"
+                        : "border-red-200 bg-red-50/80"
+                    )}
                     data-testid="amana-apply-status"
                   >
-                    <p className="text-sm font-medium text-emerald-900">
+                    <p
+                      className={cn(
+                        "text-sm font-medium",
+                        suggestedStatus === "DELIVERED" ? "text-emerald-900" : "text-red-900"
+                      )}
+                    >
                       AMANA reports {data.status.label}. Your order is still{" "}
                       <span className="font-semibold">{currentOrderStatus || "—"}</span>.
                     </p>
-                    <p className="mt-1 text-xs text-emerald-800/80">
+                    <p
+                      className={cn(
+                        "mt-1 text-xs",
+                        suggestedStatus === "DELIVERED" ? "text-emerald-800/80" : "text-red-800/80"
+                      )}
+                    >
                       Apply this to update the order status (uses the normal status rules /
                       inventory flow).
                     </p>
                     <Button
                       type="button"
                       size="sm"
-                      className="mt-2 h-8 gap-1.5 bg-emerald-700 hover:bg-emerald-800"
+                      className={cn(
+                        "mt-2 h-8 gap-1.5 text-white",
+                        suggestedStatus === "DELIVERED"
+                          ? "bg-emerald-700 hover:bg-emerald-800"
+                          : "bg-red-700 hover:bg-red-800"
+                      )}
                       disabled={!canPatchOrder}
                       onClick={() => void handleApplyOrderStatus()}
                     >
@@ -302,7 +322,12 @@ export function AmanaTrackingSheet({
                   </div>
                 ) : null}
                 {suggestedStatus && suggestedStatus === currentOrderStatus ? (
-                  <p className="text-xs font-medium text-emerald-700">
+                  <p
+                    className={cn(
+                      "text-xs font-medium",
+                      suggestedStatus === "DELIVERED" ? "text-emerald-700" : "text-red-700"
+                    )}
+                  >
                     Order status already matches AMANA ({suggestedStatus}).
                   </p>
                 ) : null}
