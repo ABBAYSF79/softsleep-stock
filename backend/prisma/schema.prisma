@@ -59,6 +59,7 @@ model User {
   stockDocumentsCreated   StockDocument[] @relation("StockDocumentCreatedBy")
   stockDocumentsValidated StockDocument[] @relation("StockDocumentValidatedBy")
   reservationsCreated Reservation[] @relation("ReservationCreatedBy")
+  orderFollowUps      OrderFollowUp[]
 
   @@index([linkedSalesUserId])
 }
@@ -121,6 +122,7 @@ model Order {
   orderItems        OrderItem[]
   pillowItems       OrderPillowItem[]
   reservations      Reservation[]
+  followUps         OrderFollowUp[]
   confirmationUserId Int?
   confirmationUser   ConfirmationUser? @relation(fields: [confirmationUserId], references: [id])
 
@@ -229,6 +231,7 @@ model PillowOrder {
   location          Location?      @relation(fields: [locationId], references: [id], onDelete: Restrict)
   items             PillowOrderItem[]
   reservations      Reservation[]
+  followUps         OrderFollowUp[]
 
   @@index([userId])
   @@index([deliveryServiceId])
@@ -248,6 +251,26 @@ model PillowOrderItem {
 
   @@index([orderId])
   @@index([pillowId])
+}
+
+/// Independent chronological journal for Order / PillowOrder (TASK 16).
+/// Exactly one of orderId | pillowOrderId must be set (enforced in service).
+/// Does NOT replace Order.note / livreurNote.
+model OrderFollowUp {
+  id            Int      @id @default(autoincrement())
+  orderId       Int?
+  pillowOrderId Int?
+  content       String   @db.Text
+  userId        Int?
+  createdAt     DateTime @default(now())
+
+  order       Order?       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pillowOrder PillowOrder? @relation(fields: [pillowOrderId], references: [id], onDelete: Cascade)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([pillowOrderId, createdAt])
+  @@index([userId])
 }
 
 model DeliveryService {

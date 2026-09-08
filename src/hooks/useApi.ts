@@ -1319,6 +1319,93 @@ export const useCurrentUser = () => {
 const getCommissionSettings = () => api.get('/settings/commission');
 const updateCommissionSettings = (data: any) => api.put('/settings/commission', data);
 
+export type OrderFollowUpItem = {
+  id: number;
+  content: string;
+  createdAt: string;
+  orderId: number | null;
+  pillowOrderId: number | null;
+  userId: number | null;
+  userName: string;
+};
+
+export const useOrderFollowUps = (orderId: number | null | undefined, enabled = true) => {
+  return useQuery({
+    queryKey: ['order-followups', 'order', orderId],
+    enabled: enabled && Boolean(orderId),
+    queryFn: async () => {
+      const { data } = await api.get(`/order-followups/order/${orderId}`, { timeout: 20000 });
+      return data as { orderId: number; items: OrderFollowUpItem[] };
+    },
+  });
+};
+
+export const useAddOrderFollowUp = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ orderId, content }: { orderId: number; content: string }) => {
+      const { data } = await api.post(
+        `/order-followups/order/${orderId}`,
+        { content },
+        { timeout: 20000 }
+      );
+      return data as OrderFollowUpItem;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['order-followups', 'order', vars.orderId] });
+      toast.success('Suivi ajouté');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to add suivi');
+    },
+  });
+};
+
+export const usePillowOrderFollowUps = (
+  pillowOrderId: number | null | undefined,
+  enabled = true
+) => {
+  return useQuery({
+    queryKey: ['order-followups', 'pillow-order', pillowOrderId],
+    enabled: enabled && Boolean(pillowOrderId),
+    queryFn: async () => {
+      const { data } = await api.get(`/order-followups/pillow-order/${pillowOrderId}`, {
+        timeout: 20000,
+      });
+      return data as { pillowOrderId: number; items: OrderFollowUpItem[] };
+    },
+  });
+};
+
+export const useAddPillowOrderFollowUp = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      pillowOrderId,
+      content,
+    }: {
+      pillowOrderId: number;
+      content: string;
+    }) => {
+      const { data } = await api.post(
+        `/order-followups/pillow-order/${pillowOrderId}`,
+        { content },
+        { timeout: 20000 }
+      );
+      return data as OrderFollowUpItem;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: ['order-followups', 'pillow-order', vars.pillowOrderId],
+      });
+      toast.success('Suivi ajouté');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to add suivi');
+    },
+  });
+};
+
 export const useApi = () => {
   return {
     getCommissionSettings,

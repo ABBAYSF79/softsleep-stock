@@ -46,6 +46,7 @@ import sizeRoutes from './routes/sizes';
 import activitiesRoutes from './routes/activities';
 import confirmationUsersRoutes from './routes/confirmation-users';
 import invoicesRoutes from './routes/invoices';
+import orderFollowupsRoutes from './routes/order-followups';
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -63,6 +64,7 @@ app.use('/api/sizes', sizeRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/confirmation-users', confirmationUsersRoutes);
 app.use('/api/invoices', invoicesRoutes);
+app.use('/api/order-followups', orderFollowupsRoutes);
 
 const PORT = process.env.PORT || 3001;
 

@@ -28,7 +28,7 @@ export function DateRangePicker({ value, onChange, id = "date-range" }: DateRang
             variant={"outline"}
             aria-label="Pick a date range"
             className={cn(
-              "w-full justify-start text-left font-normal",
+              "h-9 w-full justify-start text-left font-normal",
               !value && "text-muted-foreground"
             )}
           >

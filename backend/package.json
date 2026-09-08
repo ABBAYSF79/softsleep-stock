@@ -30,6 +30,7 @@
     "test:order-inventory": "ts-node scripts/test-order-inventory.ts",
     "test:order-cutover-blockers": "ts-node scripts/test-order-cutover-blockers.ts",
     "test:inventory-operations": "ts-node scripts/test-inventory-operations.ts",
+    "test:order-followups": "ts-node scripts/test-order-followups.ts",
     "seed:objectives": "ts-node scripts/seed-confirmation-objectives.ts",
     "test:livreur": "ts-node scripts/test-livreur-access.ts",
     "test:suivi": "ts-node scripts/test-suivi-access.ts"
