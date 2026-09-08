@@ -41,13 +41,15 @@ import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order
 import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdf } from "@/utils/order-management-pdf";
 import { OrderFollowUpSheet } from "@/components/orders/OrderFollowUpSheet";
+import { AmanaTrackingSheet } from "@/components/orders/AmanaTrackingSheet";
 import { OrderManagementToolbar } from "@/components/orders/OrderManagementToolbar";
 import { OrderQuickStatusControl } from "@/components/orders/OrderQuickStatusControl";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, History, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2 } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, History, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
+import { canTrackAmanaOrder } from "@/utils/amanaTracking";
 
 const OrderManagement = () => {
   const navigate = useNavigate();
@@ -71,6 +73,8 @@ const OrderManagement = () => {
   const [barcodeValue, setBarcodeValue] = useState<string | null>(null);
   const [suiviOrder, setSuiviOrder] = useState<any>(null);
   const [isSuiviOpen, setIsSuiviOpen] = useState(false);
+  const [trackingOrder, setTrackingOrder] = useState<any>(null);
+  const [isTrackingOpen, setIsTrackingOpen] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -206,6 +210,11 @@ const OrderManagement = () => {
   const handleOpenSuivi = useCallback((order: any) => {
     setSuiviOrder(order);
     setIsSuiviOpen(true);
+  }, []);
+
+  const handleOpenAmanaTracking = useCallback((order: any) => {
+    setTrackingOrder(order);
+    setIsTrackingOpen(true);
   }, []);
 
   const handleQuickStatusChange = useCallback(
@@ -502,6 +511,7 @@ const OrderManagement = () => {
                     onPrintOrder={handlePrintOrder}
                     onOpenGuarantee={handleOpenGuarantee}
                     onOpenSuivi={handleOpenSuivi}
+                    onOpenAmanaTracking={handleOpenAmanaTracking}
                     onNavigateAdvanced={handleNavigateAdvanced}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
@@ -584,6 +594,7 @@ const OrderManagement = () => {
                         onPrintOrder={handlePrintOrder}
                         onOpenGuarantee={handleOpenGuarantee}
                         onOpenSuivi={handleOpenSuivi}
+                        onOpenAmanaTracking={handleOpenAmanaTracking}
                         onNavigateAdvanced={handleNavigateAdvanced}
                         onDelete={handleDeleteClick}
                         onCopyOrderInfo={handleCopyOrderInfo}
@@ -628,6 +639,19 @@ const OrderManagement = () => {
           if (!open) setSuiviOrder(null);
         }}
         order={suiviOrder}
+      />
+      <AmanaTrackingSheet
+        open={isTrackingOpen}
+        onOpenChange={(open) => {
+          setIsTrackingOpen(open);
+          if (!open) setTrackingOrder(null);
+        }}
+        order={trackingOrder}
+        onOrderStatusPatched={(orderId, status) => {
+          setTrackingOrder((prev: any) =>
+            prev && Number(prev.id) === orderId ? { ...prev, status } : prev
+          );
+        }}
       />
 
       {isAdmin && (
@@ -751,6 +775,7 @@ type OrderRowProps = {
   onPrintOrder: (order: any) => void;
   onOpenGuarantee: (order: any) => void;
   onOpenSuivi: (order: any) => void;
+  onOpenAmanaTracking: (order: any) => void;
   onNavigateAdvanced: (id: number) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
@@ -777,6 +802,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
   onPrintOrder,
   onOpenGuarantee,
   onOpenSuivi,
+  onOpenAmanaTracking,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -952,6 +978,18 @@ const OrderMobileCard = memo(function OrderMobileCard({
           >
             <History className="h-4 w-4" />
           </Button>
+          {canTrackAmanaOrder(order) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Track shipment"
+              title="Track shipment"
+              onClick={() => onOpenAmanaTracking(order)}
+            >
+              <Truck className="h-4 w-4" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Order actions">
@@ -1009,6 +1047,7 @@ const OrderRow = memo(function OrderRow({
   onPrintOrder,
   onOpenGuarantee,
   onOpenSuivi,
+  onOpenAmanaTracking,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -1166,6 +1205,18 @@ const OrderRow = memo(function OrderRow({
           >
             <History className="h-3.5 w-3.5" />
           </Button>
+          {canTrackAmanaOrder(order) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              aria-label="Track shipment"
+              title="Track shipment"
+              onClick={() => onOpenAmanaTracking(order)}
+            >
+              <Truck className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Order actions">

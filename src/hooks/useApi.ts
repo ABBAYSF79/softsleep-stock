@@ -1329,6 +1329,49 @@ export type OrderFollowUpItem = {
   userName: string;
 };
 
+export type AmanaTrackingData = {
+  trackingCode: string;
+  carrier: "AMANA";
+  product: string | null;
+  amount: number | null;
+  amountRaw: string | null;
+  weight: number | null;
+  weightRaw: string | null;
+  destination: string | null;
+  currentPosition: string | null;
+  depositDate: string | null;
+  deliveryDate: string | null;
+  status: { code: string; label: string; raw: string };
+  lastUpdate: { date: string; time: string } | null;
+  history: Array<{
+    date: string;
+    time: string;
+    statusCode: string;
+    statusLabel: string;
+    rawStatus: string;
+    location: string | null;
+  }>;
+  fetchedAt: string;
+  cached: boolean;
+};
+
+export const useAmanaTracking = (
+  orderId: number | null | undefined,
+  enabled = true
+) => {
+  return useQuery({
+    queryKey: ["amana-tracking", "order", orderId],
+    enabled: enabled && Boolean(orderId),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await api.get(`/amana-tracking/order/${orderId}`, {
+        timeout: 25000,
+      });
+      return data as { success: boolean; data: AmanaTrackingData };
+    },
+  });
+};
+
 export const useOrderFollowUps = (orderId: number | null | undefined, enabled = true) => {
   return useQuery({
     queryKey: ['order-followups', 'order', orderId],
