@@ -1,8 +1,12 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://mangesoftsleep.store/api',
-  timeout: 60000, // 60 seconds timeout
+  // Dev: relative `/api` → Vite proxy → http://localhost:3001
+  // Prod build: live API unless VITE_API_URL overrides
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    (import.meta.env.DEV ? '/api' : 'https://mangesoftsleep.store/api'),
+  timeout: 60000,
   withCredentials: true,
 });
 

@@ -8,6 +8,7 @@ import {
   OrderAccessError,
 } from '../utils/order-access';
 import {
+  isAmanaNoInfoPage,
   isEmptyAmanaTracking,
   parseAmanaTrackingHtml,
   type AmanaTrackingPayload,
@@ -73,61 +74,92 @@ type HttpGetResult = {
 
 /**
  * Production-safe HTTP GET (no dependency on global fetch / Node 18+).
+ * Follows a few redirects and always hard-timeouts.
  */
 export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpGetResult> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const url = new URL(urlString);
-    const lib = url.protocol === 'http:' ? http : https;
+  const maxRedirects = 5;
 
-    const req = lib.request(
-      {
-        protocol: url.protocol,
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'http:' ? 80 : 443),
-        path: `${url.pathname}${url.search}`,
-        method: 'GET',
-        headers: {
-          Accept: 'application/json, text/html, */*',
-          'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          Connection: 'close',
+  const once = (currentUrl: string, redirectsLeft: number): Promise<HttpGetResult> =>
+    new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(hardTimer);
+        fn();
+      };
+
+      const url = new URL(currentUrl);
+      const lib = url.protocol === 'http:' ? http : https;
+
+      const req = lib.request(
+        {
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'http:' ? 80 : 443),
+          path: `${url.pathname}${url.search}`,
+          method: 'GET',
+          headers: {
+            Accept: 'application/json, text/html, */*',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            Connection: 'close',
+          },
+          timeout: timeoutMs,
+          agent: false as any,
         },
-        timeout: timeoutMs,
-        // Some hosts misbehave with keep-alive from Node
-        agent: false,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => {
-          if (settled) return;
-          settled = true;
-          resolve({
-            statusCode: res.statusCode || 0,
-            contentType: String(res.headers['content-type'] || ''),
-            body: Buffer.concat(chunks).toString('utf8'),
+        (res) => {
+          const status = res.statusCode || 0;
+          const location = res.headers.location;
+          if (status >= 300 && status < 400 && location && redirectsLeft > 0) {
+            res.resume();
+            const next = new URL(location, currentUrl).toString();
+            finish(() => {
+              once(next, redirectsLeft - 1).then(resolve, reject);
+            });
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => {
+            finish(() =>
+              resolve({
+                statusCode: status,
+                contentType: String(res.headers['content-type'] || ''),
+                body: Buffer.concat(chunks).toString('utf8'),
+              })
+            );
           });
-        });
-      }
-    );
+          res.on('error', (err) => {
+            finish(() => reject(err));
+          });
+        }
+      );
 
-    req.on('timeout', () => {
-      req.destroy();
-      if (settled) return;
-      settled = true;
-      reject(Object.assign(new Error('timeout'), { name: 'AbortError' }));
+      const hardTimer = setTimeout(() => {
+        req.destroy();
+        finish(() =>
+          reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+        );
+      }, timeoutMs);
+
+      req.on('timeout', () => {
+        req.destroy();
+        finish(() =>
+          reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+        );
+      });
+
+      req.on('error', (err) => {
+        finish(() => reject(err));
+      });
+
+      req.end();
     });
 
-    req.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      reject(err);
-    });
-
-    req.end();
-  });
+  return once(urlString, maxRedirects);
 }
 
 export class AmanaTrackingService {
@@ -256,9 +288,9 @@ export class AmanaTrackingService {
       );
     }
 
-    if (isEmptyAmanaTracking(parsed)) {
+    if (isAmanaNoInfoPage(html) || isEmptyAmanaTracking(parsed)) {
       throw new AmanaTrackingError(
-        'No tracking information found for this code',
+        `AMANA has no tracking events for ${trackingCode} right now. Try again later or verify the code on bam-tracking.barid.ma`,
         'EMPTY_RESULT'
       );
     }

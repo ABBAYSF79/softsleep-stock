@@ -190,3 +190,17 @@ export function isEmptyAmanaTracking(
     data.history.length === 0
   );
 }
+
+/** Detect BAM portal "no information found" page. */
+export function isAmanaNoInfoPage(html: string): boolean {
+  const text = html
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/<[^>]+>/g, " ")
+    .toLowerCase();
+  return (
+    /aucune information/.test(text) ||
+    /aucune information trouv/.test(text) ||
+    /no information found/.test(text)
+  );
+}
