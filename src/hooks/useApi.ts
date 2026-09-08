@@ -1363,9 +1363,14 @@ export const useAmanaTracking = (
     queryKey: ["amana-tracking", "order", orderId],
     enabled: enabled && Boolean(orderId),
     staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
+    // VPS/AMANA can hang — never retry in a loop; user clicks Retry manually.
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async ({ signal }) => {
       const { data } = await api.get(`/amana-tracking/order/${orderId}`, {
-        timeout: 25000,
+        timeout: 15000,
+        signal,
       });
       return data as { success: boolean; data: AmanaTrackingData };
     },

@@ -1,6 +1,6 @@
 import { CheckCircle2, Loader2, RotateCw, Truck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -128,11 +128,11 @@ export function AmanaTrackingSheet({
   const orderId = order?.id ?? null;
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const query = useAmanaTracking(orderId, open && Boolean(orderId));
   const updateStatus = useUpdateOrderStatus();
   const data = query.data?.data;
   const trackingCode = order?.trackingCode?.trim() || data?.trackingCode || "—";
-  const busy = query.isFetching || isRefreshing;
   const currentOrderStatus = order?.status ?? null;
   const suggestedStatus = data
     ? suggestedOrderStatusFromAmana(data.status.code)
@@ -143,17 +143,33 @@ export function AmanaTrackingSheet({
     suggestedStatus !== currentOrderStatus &&
     !updateStatus.isPending;
 
+  // Clear stale refresh error when reopening / changing order
+  useEffect(() => {
+    if (!open) {
+      setRefreshError(null);
+      if (orderId) {
+        void queryClient.cancelQueries({ queryKey: ["amana-tracking", "order", orderId] });
+      }
+    }
+  }, [open, orderId, queryClient]);
+
   const handleRefresh = async () => {
-    if (!orderId || busy) return;
+    if (!orderId || isRefreshing) return;
     setIsRefreshing(true);
+    setRefreshError(null);
     try {
       const { data: payload } = await api.get(`/amana-tracking/order/${orderId}`, {
         params: { refresh: 1 },
-        timeout: 25000,
+        timeout: 15000,
       });
       queryClient.setQueryData(["amana-tracking", "order", orderId], payload);
     } catch (error: any) {
-      // Keep existing data if any; surface message via retry UI on hard errors
+      const message =
+        error?.response?.data?.error ||
+        (error?.code === "ECONNABORTED"
+          ? "Request timed out — the VPS could not reach AMANA in time"
+          : "Unable to refresh AMANA tracking");
+      setRefreshError(message);
       console.error("AMANA tracking refresh failed", error?.response?.data || error);
     } finally {
       setIsRefreshing(false);
@@ -170,6 +186,16 @@ export function AmanaTrackingSheet({
       // Error toast handled by useUpdateOrderStatus
     }
   };
+
+  const showInitialLoading = query.isLoading && !data;
+  const errorFromQuery =
+    (query.error as any)?.response?.data?.error ||
+    ((query.error as any)?.code === "ECONNABORTED"
+      ? "Request timed out — the VPS could not reach AMANA in time"
+      : null) ||
+    (query.isError ? "We couldn't retrieve the latest AMANA tracking information." : null);
+  const displayError = refreshError || errorFromQuery;
+  const showError = !data && Boolean(displayError);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -210,27 +236,29 @@ export function AmanaTrackingSheet({
               variant="outline"
               size="sm"
               className="h-8 shrink-0 gap-1.5"
-              onClick={handleRefresh}
-              disabled={busy || !orderId}
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing || !orderId || showInitialLoading}
               aria-label="Refresh tracking"
               title="Refresh tracking"
             >
-              <RotateCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
+              <RotateCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           </div>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-5">
-          {query.isLoading ? (
-            <TrackingSkeleton />
-          ) : query.isError && !data ? (
+          {showInitialLoading ? (
+            <div className="space-y-3">
+              <p className="text-center text-xs text-slate-500">
+                Contacting AMANA… (max ~15s)
+              </p>
+              <TrackingSkeleton />
+            </div>
+          ) : showError ? (
             <div className="space-y-3 py-6 text-center" data-testid="amana-tracking-error">
               <p className="text-sm font-semibold text-slate-900">Unable to retrieve tracking</p>
-              <p className="text-sm text-slate-500">
-                {(query.error as any)?.response?.data?.error ||
-                  "We couldn't retrieve the latest AMANA tracking information."}
-              </p>
+              <p className="text-sm text-slate-500">{displayError}</p>
               {(query.error as any)?.response?.data?.detail ? (
                 <p className="break-all text-xs text-slate-400">
                   {(query.error as any).response.data.detail}
@@ -241,14 +269,18 @@ export function AmanaTrackingSheet({
                   code: {(query.error as any).response.data.code}
                 </p>
               ) : null}
+              <p className="mx-auto max-w-sm text-xs text-slate-400">
+                If this keeps happening on the VPS, check outbound HTTPS to{" "}
+                <span className="font-mono">bam-tracking.barid.ma</span>.
+              </p>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => void handleRefresh()}
-                disabled={busy}
+                disabled={isRefreshing}
               >
-                {busy ? (
+                {isRefreshing ? (
                   <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                 ) : null}
                 Retry

@@ -16,7 +16,7 @@ import {
 
 const DEFAULT_AMANA_URL = 'https://bam-tracking.barid.ma/Tracking/Search';
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 25_000;
+const FETCH_TIMEOUT_MS = 12_000;
 
 type CacheEntry = {
   expiresAt: number;
