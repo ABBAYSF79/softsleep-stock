@@ -37,7 +37,7 @@ const AMANA_PROXY_ENABLED = true;
  * Optional override: process.env.AMANA_PROXY_URL
  */
 const HARDCODED_AMANA_PROXY_URL =
-  'http://sub_5DdPsle9-country-ma:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
+  'http://sub_5DdPsle9-country-MA:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
 
 function isAmanaProxyEnabled(): boolean {
   const env = process.env.AMANA_PROXY_ENABLED?.trim().toLowerCase();
