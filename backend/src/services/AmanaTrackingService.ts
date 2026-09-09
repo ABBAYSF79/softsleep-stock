@@ -17,7 +17,9 @@ import {
 
 const DEFAULT_AMANA_URL = 'https://bam-tracking.barid.ma/Tracking/Search';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+/** Direct Barid is usually fast; proxied residential hops can be slow. */
 const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_TIMEOUT_PROXY_MS = 28_000;
 
 /**
  * Proxy switch:
@@ -35,7 +37,7 @@ const AMANA_PROXY_ENABLED = true;
  * Optional override: process.env.AMANA_PROXY_URL
  */
 const HARDCODED_AMANA_PROXY_URL =
-  'http://sub_5DdPsle9:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
+  'http://sub_5DdPsle9-country-ma:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
 
 function isAmanaProxyEnabled(): boolean {
   const env = process.env.AMANA_PROXY_ENABLED?.trim().toLowerCase();
@@ -295,7 +297,10 @@ export class AmanaTrackingService {
       } else {
         console.info('[amana-tracking] fetching direct (proxy disabled)');
       }
-      response = await this.httpGet(url, FETCH_TIMEOUT_MS);
+      response = await this.httpGet(
+        url,
+        proxyUrl ? FETCH_TIMEOUT_PROXY_MS : FETCH_TIMEOUT_MS
+      );
     } catch (err: any) {
       const detail = err?.message || String(err);
       console.error('[amana-tracking] upstream request failed', {

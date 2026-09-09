@@ -160,7 +160,7 @@ export function AmanaTrackingSheet({
     try {
       const { data: payload } = await api.get(`/amana-tracking/order/${orderId}`, {
         params: { refresh: 1 },
-        timeout: 15000,
+        timeout: 30000,
       });
       queryClient.setQueryData(["amana-tracking", "order", orderId], payload);
     } catch (error: any) {
@@ -251,7 +251,7 @@ export function AmanaTrackingSheet({
           {showInitialLoading ? (
             <div className="space-y-3">
               <p className="text-center text-xs text-slate-500">
-                Contacting AMANA… (max ~15s)
+                Contacting AMANA… (max ~30s)
               </p>
               <TrackingSkeleton />
             </div>

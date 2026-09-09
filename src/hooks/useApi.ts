@@ -1369,7 +1369,7 @@ export const useAmanaTracking = (
     refetchOnReconnect: false,
     queryFn: async ({ signal }) => {
       const { data } = await api.get(`/amana-tracking/order/${orderId}`, {
-        timeout: 15000,
+        timeout: 30000,
         signal,
       });
       return data as { success: boolean; data: AmanaTrackingData };
