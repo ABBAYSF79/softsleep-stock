@@ -21,12 +21,13 @@ const FETCH_TIMEOUT_MS = 12_000;
 
 /**
  * Proxy switch:
- * - false → direct to Barid (use this on local PC in Morocco)
- * - true  → Turnoxy (use this on foreign VPS only, with valid credentials)
+ * - false → direct to Barid (local PC in Morocco)
+ * - true  → Turnoxy (DigitalOcean / foreign VPS)
+ * Env override: AMANA_PROXY_ENABLED=0|1
  *
- * Optional: AMANA_PROXY_ENABLED=1|0 in env overrides this flag.
+ * Production VPS must use true + valid Turnoxy HTTP string below.
  */
-const AMANA_PROXY_ENABLED = false;
+const AMANA_PROXY_ENABLED = true;
 
 /**
  * Turnoxy — paste EXACT "HTTP" string from dashboard (COPY PROXY STRING / GENERATE CONFIG).
@@ -34,7 +35,7 @@ const AMANA_PROXY_ENABLED = false;
  * Optional override: process.env.AMANA_PROXY_URL
  */
 const HARDCODED_AMANA_PROXY_URL =
-  'http://sub_5DdPsle9:CjHFfnPfV2Olnvhv@gate.turnoxy.com:1318';
+  'http://sub_5DdPsle9:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
 
 function isAmanaProxyEnabled(): boolean {
   const env = process.env.AMANA_PROXY_ENABLED?.trim().toLowerCase();
