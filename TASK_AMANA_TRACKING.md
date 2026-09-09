@@ -94,8 +94,9 @@ OM row Truck icon (AMANA + trackingCode only)
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `AMANA_TRACKING_URL` | `https://bam-tracking.barid.ma/Tracking/Search` | Override upstream search URL |
+| `AMANA_PROXY_URL` | _(optional)_ | Override the hardcoded Turnoxy proxy URL in `AmanaTrackingService` |
 
-No secrets required.
+AMANA upstream HTTPS uses an HTTP `CONNECT` tunnel through the proxy (hardcoded Turnoxy Morocco credentials in `AmanaTrackingService`, overridable via `AMANA_PROXY_URL`).
 
 ## Limitations
 

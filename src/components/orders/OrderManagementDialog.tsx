@@ -16,17 +16,20 @@ import {
   OrderStatusUpdate,
   useCreateOrder,
   useDeliveryServices,
+  useInventoryLocations,
   usePillowStock,
   useProducts,
   useUpdateOrderDelivery,
   useUpdateOrderStatus,
 } from "@/hooks/useApi";
+import { useInventoryMode } from "@/features/inventory/hooks/useInventoryQueries";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
   CalendarDays,
   Car,
+  MapPin,
   MessageSquare,
   Package,
   Plus,
@@ -109,6 +112,7 @@ export const OrderManagementDialog = ({
   const [manualTotal, setManualTotal] = useState<number | null>(null);
   const [selectedDeliveryService, setSelectedDeliveryService] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
+  const [locationId, setLocationId] = useState<string>("__none__");
   const [selectedConfirmationUser, setSelectedConfirmationUser] = useState<string>("none");
   const [note, setNote] = useState<string>("");
   const [trackingCode, setTrackingCode] = useState<string>("");
@@ -120,10 +124,15 @@ export const OrderManagementDialog = ({
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
   const { data: pillows } = usePillowStock();
+  const { data: inventoryLocations = [] } = useInventoryLocations();
+  const { data: inventoryModeInfo } = useInventoryMode();
   const createOrder = useCreateOrder();
   const updateOrderStatus = useUpdateOrderStatus();
   const updateOrderDelivery = useUpdateOrderDelivery();
   const queryClient = useQueryClient();
+
+  const inventoryActive =
+    inventoryModeInfo?.mode === "INVENTORY" && Boolean(inventoryModeInfo?.initialized);
 
   const isAdmin = user?.role === "ADMIN";
   const isLivreur = user?.role === "LIVREUR";
@@ -187,6 +196,7 @@ export const OrderManagementDialog = ({
       setPhone(order.phone || "");
       setSelectedDeliveryService(order.deliveryServiceId?.toString() || "");
       setSelectedCity(order.city || "");
+      setLocationId(order.locationId ? String(order.locationId) : "__none__");
       setSelectedConfirmationUser(order.confirmationUserId?.toString() || "none");
       setNote(order.note || "");
       setTrackingCode(order.trackingCode || "");
@@ -203,6 +213,7 @@ export const OrderManagementDialog = ({
       setPhone("");
       setSelectedDeliveryService("");
       setSelectedCity("");
+      setLocationId("__none__");
       setSelectedConfirmationUser("none");
       setNote("");
       setTrackingCode("");
@@ -213,6 +224,43 @@ export const OrderManagementDialog = ({
       setPhoneError(null);
     }
   }, [order, open]);
+
+  // When inventory mode is on, default to Warehouse (WH-MAIN) for new orders.
+  useEffect(() => {
+    if (!open || order || !inventoryActive) return;
+    if (locationId !== "__none__") return;
+    const sellable = (inventoryLocations as any[]).filter(
+      (l) => l && l.active !== false && l.isSellable !== false
+    );
+    const preferred =
+      sellable.find((l) => String(l.code).toUpperCase() === "WH-MAIN") ||
+      sellable.find((l) => String(l.type).toUpperCase() === "WAREHOUSE") ||
+      sellable
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0) ||
+            String(a.code || "").localeCompare(String(b.code || ""))
+        )[0];
+    if (preferred?.id) setLocationId(String(preferred.id));
+  }, [open, order, inventoryActive, inventoryLocations, locationId]);
+
+  const locationOptions = useMemo(() => {
+    const opts = (inventoryLocations as any[])
+      .filter((l) => l && l.active !== false && l.isSellable !== false)
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0) ||
+          String(a.code || "").localeCompare(String(b.code || ""))
+      )
+      .map((l) => ({
+        label: `${l.name} (${l.code})`,
+        value: String(l.id),
+      }));
+    if (inventoryActive) return opts;
+    return [{ label: "No location (legacy)", value: "__none__" }, ...opts];
+  }, [inventoryLocations, inventoryActive]);
 
   const handlePhoneChange = (value: string) => {
     const sanitized = sanitizePhoneInput(value);
@@ -526,6 +574,11 @@ export const OrderManagementDialog = ({
         return;
       }
 
+      if (inventoryActive && pillowItems.length > 0 && (locationId === "__none__" || !locationId)) {
+        toast.error("Select a fulfillment location for accessories (inventory mode)");
+        return;
+      }
+
       try {
         const orderData: Record<string, unknown> = {
           customerName,
@@ -546,6 +599,9 @@ export const OrderManagementDialog = ({
           note,
           status: "PENDING",
           trackingCode: undefined,
+          ...(locationId && locationId !== "__none__"
+            ? { locationId: Number(locationId) }
+            : {}),
         };
 
         if (manualTotalNumber !== null) {
@@ -1254,6 +1310,37 @@ export const OrderManagementDialog = ({
                       {pillowItems.length}
                     </Badge>
                   </div>
+
+                  {(inventoryActive || locationOptions.length > 1) && (
+                    <div className="mb-3 space-y-1.5">
+                      <Label className="text-slate-700">
+                        Location
+                        {inventoryActive && pillowItems.length > 0 ? (
+                          <span className="text-red-500"> *</span>
+                        ) : (
+                          <span className="font-normal text-slate-400">
+                            {" "}
+                            (stock accessoires)
+                          </span>
+                        )}
+                      </Label>
+                      <SearchableSelect
+                        value={locationId}
+                        onValueChange={setLocationId}
+                        options={
+                          locationOptions.length
+                            ? locationOptions
+                            : [{ label: "No sellable location configured", value: "__none__" }]
+                        }
+                        placeholder="Select location"
+                        searchPlaceholder="Search location..."
+                      />
+                      <p className="flex items-start gap-1.5 text-xs text-slate-500">
+                        <MapPin className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                        Emplacement pour réserver le stock accessoires (défaut: Warehouse).
+                      </p>
+                    </div>
+                  )}
 
                   <form
                     onSubmit={(e) => {

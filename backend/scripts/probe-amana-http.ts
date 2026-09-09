@@ -109,9 +109,9 @@ Next checks on VPS:
   dig +short ${HOST} A
   curl -4 -v --max-time 15 "${url}"
 
-If curl also times out, outbound 443 to this host is still blocked or filtered
-(even if "HTTPS" is generally allowed). Ask the VPS provider to allow
-${HOST} / its IPv4 on port 443, or use a proxy/VPN egress.
+If curl also times out, outbound 443 to this host is still blocked or filtered.
+Set AMANA_PROXY_URL (HTTP proxy with Morocco egress, e.g. Turnoxy) and re-run:
+  AMANA_PROXY_URL='http://USER:PASS@HOST:PORT' npx ts-node scripts/probe-amana-http.ts
 `);
     process.exitCode = 1;
   }
