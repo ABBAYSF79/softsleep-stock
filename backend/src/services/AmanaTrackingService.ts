@@ -1,8 +1,7 @@
 import https from 'https';
 import http from 'http';
-import tls from 'tls';
 import { URL } from 'url';
-import type { Duplex } from 'stream';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { PrismaClient, User } from '@prisma/client';
 import {
   assertCanAccessOrder,
@@ -21,25 +20,33 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 12_000;
 
 /**
- * Turnoxy Morocco HTTP proxy for AMANA egress from the VPS.
- * Prefer resetting credentials in Turnoxy if this repo is shared / public.
+ * Proxy switch:
+ * - false → direct to Barid (use this on local PC in Morocco)
+ * - true  → Turnoxy (use this on foreign VPS only, with valid credentials)
+ *
+ * Optional: AMANA_PROXY_ENABLED=1|0 in env overrides this flag.
+ */
+const AMANA_PROXY_ENABLED = false;
+
+/**
+ * Turnoxy — paste EXACT "HTTP" string from dashboard (COPY PROXY STRING / GENERATE CONFIG).
+ * Wrong user/pass or invented username suffixes → HTTP 407.
  * Optional override: process.env.AMANA_PROXY_URL
  */
 const HARDCODED_AMANA_PROXY_URL =
-  'http://sub_5DdPsle9-country-ma:CjHFfnPfV2Olnvhv@gate.turnoxy.com:1318';
+  'http://sub_5DdPsle9:CjHFfnPfV2Olnvhv@gate.turnoxy.com:1318';
 
-function getAmanaProxyUrl(): string | undefined {
-  const fromEnv = process.env.AMANA_PROXY_URL?.trim();
-  return fromEnv || HARDCODED_AMANA_PROXY_URL;
+function isAmanaProxyEnabled(): boolean {
+  const env = process.env.AMANA_PROXY_ENABLED?.trim().toLowerCase();
+  if (env === '0' || env === 'false' || env === 'off') return false;
+  if (env === '1' || env === 'true' || env === 'on') return true;
+  return AMANA_PROXY_ENABLED;
 }
 
-function proxyAuthHeader(proxy: URL): Record<string, string> {
-  if (!proxy.username && !proxy.password) return {};
-  const user = decodeURIComponent(proxy.username);
-  const pass = decodeURIComponent(proxy.password);
-  return {
-    'Proxy-Authorization': `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`,
-  };
+function getAmanaProxyUrl(): string | undefined {
+  if (!isAmanaProxyEnabled()) return undefined;
+  const fromEnv = process.env.AMANA_PROXY_URL?.trim();
+  return fromEnv || HARDCODED_AMANA_PROXY_URL;
 }
 
 function redactProxyForLog(proxyUrl: string): string {
@@ -50,90 +57,6 @@ function redactProxyForLog(proxyUrl: string): string {
   } catch {
     return '[invalid AMANA_PROXY_URL]';
   }
-}
-
-/**
- * Open an HTTP CONNECT tunnel through an HTTP proxy to the target host:port.
- */
-function openHttpProxyTunnel(
-  target: URL,
-  proxy: URL,
-  timeoutMs: number
-): Promise<Duplex> {
-  return new Promise((resolve, reject) => {
-    if (proxy.protocol !== 'http:' && proxy.protocol !== 'https:') {
-      reject(
-        new Error(
-          `Unsupported AMANA_PROXY_URL protocol "${proxy.protocol}" (use http://…)`
-        )
-      );
-      return;
-    }
-
-    const targetPort =
-      Number(target.port) || (target.protocol === 'https:' ? 443 : 80);
-    const connectPath = `${target.hostname}:${targetPort}`;
-    const proxyPort =
-      Number(proxy.port) || (proxy.protocol === 'https:' ? 443 : 80);
-    const lib = proxy.protocol === 'https:' ? https : http;
-
-    let settled = false;
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(hardTimer);
-      fn();
-    };
-
-    const req = lib.request({
-      protocol: proxy.protocol,
-      hostname: proxy.hostname,
-      port: proxyPort,
-      method: 'CONNECT',
-      path: connectPath,
-      headers: {
-        Host: connectPath,
-        ...proxyAuthHeader(proxy),
-        Connection: 'close',
-      },
-      timeout: timeoutMs,
-      family: 4,
-      agent: false as any,
-    });
-
-    const hardTimer = setTimeout(() => {
-      req.destroy();
-      finish(() =>
-        reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
-      );
-    }, timeoutMs);
-
-    req.on('connect', (res, socket) => {
-      if ((res.statusCode || 0) !== 200) {
-        socket.destroy();
-        finish(() =>
-          reject(
-            new Error(`Proxy CONNECT failed with status ${res.statusCode || 0}`)
-          )
-        );
-        return;
-      }
-      finish(() => resolve(socket));
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      finish(() =>
-        reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
-      );
-    });
-
-    req.on('error', (err) => {
-      finish(() => reject(err));
-    });
-
-    req.end();
-  });
 }
 
 type CacheEntry = {
@@ -201,18 +124,19 @@ const DEFAULT_REQUEST_HEADERS = {
 /**
  * Production-safe HTTP GET (no dependency on global fetch / Node 18+).
  * Follows a few redirects and always hard-timeouts.
- * When `AMANA_PROXY_URL` is set, HTTPS targets go through an HTTP CONNECT tunnel
- * (e.g. Turnoxy Morocco residential proxy on a foreign VPS).
+ * Uses https-proxy-agent when a proxy URL is configured (same auth as curl -x).
  */
 export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpGetResult> {
   const maxRedirects = 5;
   const proxyUrl = getAmanaProxyUrl();
+  const proxyAgent = proxyUrl
+    ? new HttpsProxyAgent(proxyUrl, { family: 4 } as any)
+    : null;
 
   const once = (currentUrl: string, redirectsLeft: number): Promise<HttpGetResult> =>
     new Promise((resolve, reject) => {
       let settled = false;
       let activeReq: http.ClientRequest | null = null;
-      let tunnelSocket: Duplex | null = null;
 
       const finish = (fn: () => void) => {
         if (settled) return;
@@ -252,91 +176,11 @@ export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpG
 
       const hardTimer = setTimeout(() => {
         activeReq?.destroy();
-        tunnelSocket?.destroy();
         finish(() =>
           reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
         );
       }, timeoutMs);
 
-      const attachReqHandlers = (req: http.ClientRequest) => {
-        activeReq = req;
-        req.on('timeout', () => {
-          req.destroy();
-          finish(() =>
-            reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
-          );
-        });
-        req.on('error', (err) => {
-          finish(() => reject(err));
-        });
-        req.end();
-      };
-
-      // Proxied HTTPS: CONNECT tunnel then TLS to target
-      if (proxyUrl && url.protocol === 'https:') {
-        openHttpProxyTunnel(url, new URL(proxyUrl), timeoutMs)
-          .then((socket) => {
-            if (settled) {
-              socket.destroy();
-              return;
-            }
-            tunnelSocket = socket;
-            const req = https.request(
-              {
-                protocol: 'https:',
-                hostname: url.hostname,
-                port: url.port || 443,
-                path: `${url.pathname}${url.search}`,
-                method: 'GET',
-                headers: DEFAULT_REQUEST_HEADERS,
-                timeout: timeoutMs,
-                servername: url.hostname,
-                createConnection: () =>
-                  tls.connect({
-                    socket: socket as any,
-                    servername: url.hostname,
-                    rejectUnauthorized: true,
-                  }),
-              },
-              handleResponse
-            );
-            attachReqHandlers(req);
-          })
-          .catch((err) => {
-            finish(() => reject(err));
-          });
-        return;
-      }
-
-      // Proxied plain HTTP: absolute-form request to the proxy
-      if (proxyUrl && url.protocol === 'http:') {
-        const proxy = new URL(proxyUrl);
-        const proxyPort =
-          Number(proxy.port) || (proxy.protocol === 'https:' ? 443 : 80);
-        const lib = proxy.protocol === 'https:' ? https : http;
-        const req = lib.request(
-          {
-            protocol: proxy.protocol,
-            hostname: proxy.hostname,
-            port: proxyPort,
-            path: currentUrl,
-            method: 'GET',
-            family: 4,
-            headers: {
-              ...DEFAULT_REQUEST_HEADERS,
-              Host: url.host,
-              ...proxyAuthHeader(proxy),
-            },
-            timeout: timeoutMs,
-            agent: false as any,
-          },
-          handleResponse
-        );
-        attachReqHandlers(req);
-        return;
-      }
-
-      // Direct (no proxy)
       const lib = url.protocol === 'http:' ? http : https;
       const req = lib.request(
         {
@@ -349,11 +193,33 @@ export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpG
           family: 4,
           headers: DEFAULT_REQUEST_HEADERS,
           timeout: timeoutMs,
-          agent: false as any,
+          ...(proxyAgent ? { agent: proxyAgent as any } : { agent: false as any }),
         },
         handleResponse
       );
-      attachReqHandlers(req);
+
+      activeReq = req;
+      req.on('timeout', () => {
+        req.destroy();
+        finish(() =>
+          reject(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+        );
+      });
+      req.on('error', (err: any) => {
+        const msg = err?.message || String(err);
+        if (/407/.test(msg)) {
+          finish(() =>
+            reject(
+              new Error(
+                'Proxy authentication failed (407). Re-copy the exact HTTP proxy string from Turnoxy dashboard into HARDCODED_AMANA_PROXY_URL (or AMANA_PROXY_URL).'
+              )
+            )
+          );
+          return;
+        }
+        finish(() => reject(err));
+      });
+      req.end();
     });
 
   return once(urlString, maxRedirects);
@@ -425,6 +291,8 @@ export class AmanaTrackingService {
     try {
       if (proxyUrl) {
         console.info('[amana-tracking] fetching via proxy', redactProxyForLog(proxyUrl));
+      } else {
+        console.info('[amana-tracking] fetching direct (proxy disabled)');
       }
       response = await this.httpGet(url, FETCH_TIMEOUT_MS);
     } catch (err: any) {
@@ -452,7 +320,15 @@ export class AmanaTrackingService {
       console.error('[amana-tracking] upstream bad status', {
         statusCode: response.statusCode,
         preview: response.body.slice(0, 200),
+        proxy: proxyUrl ? redactProxyForLog(proxyUrl) : null,
       });
+      if (response.statusCode === 407) {
+        throw new AmanaTrackingError(
+          'Turnoxy proxy rejected username/password (HTTP 407). Copy the exact HTTP string from the Turnoxy dashboard, or set AMANA_PROXY_ENABLED=false for local Morocco.',
+          'UPSTREAM_ERROR',
+          response.body.slice(0, 200)
+        );
+      }
       throw new AmanaTrackingError(
         `AMANA tracking returned HTTP ${response.statusCode}`,
         'UPSTREAM_ERROR',
