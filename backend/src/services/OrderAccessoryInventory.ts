@@ -20,7 +20,8 @@ type TxClient = Prisma.TransactionClient;
  *   → RETURNED        → return fulfilled qty + release remaining
  *
  * Pre-cutover orders with accessory lines but no Reservation:
- *   throw LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED (never silent skip).
+ *   skip new-inventory side-effects (status/edits allowed; no Reservation/StockMovement).
+ *   Explicit FREEZE via Cutover UI still blocks.
  *
  * LEGACY mode: this helper no-ops (callers keep Pillow.stock behavior).
  */
@@ -159,13 +160,7 @@ export class OrderAccessoryInventory {
         : await this.reservations.findOpenForOrderInTx(tx, args.orderId, 'PILLOW_ORDER');
 
     if (!reservation) {
-      if (args.hasAccessoryLines) {
-        throw new ReservationDomainError(
-          'LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED',
-          'This order was created before inventory cutover and requires transition handling before its accessory inventory can be changed.'
-        );
-      }
-      // No accessories → nothing to do
+      // Pre-cutover / no reservation: allow status change; do not touch new inventory ledger.
       return true;
     }
 
@@ -325,11 +320,12 @@ export class OrderAccessoryInventory {
     }
 
     if (!existing) {
-      // Accessories present but no reservation — legacy pre-cutover order
-      throw new ReservationDomainError(
-        'LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED',
-        'This order was created before inventory cutover and requires transition handling before its accessory inventory can be changed.'
-      );
+      // Pre-cutover accessories with no reservation: allow reconcile/edit; skip new inventory.
+      const { LegacyOrderTransitionService } = await import('./LegacyOrderTransitionService');
+      const transitions = new LegacyOrderTransitionService(this.prisma);
+      // FREEZE still blocks; CLOSED_UNDER_LEGACY / no transition → skip
+      await transitions.gateInventoryAffectingChange('ORDER', args.orderId, true);
+      return null;
     }
 
     const locationId = args.locationId ?? existing.location?.id;

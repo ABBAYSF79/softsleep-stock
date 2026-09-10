@@ -40,30 +40,31 @@ LEGACY ACTIVE ORDER
         ↓
 NO INVENTORY RESERVATION
         ↓
-TRANSITION REQUIRED
+STATUS / EDIT ALLOWED
+        ↓
+NEW INVENTORY SIDE-EFFECTS SKIPPED
 ```
 
-**NO SILENT INVENTORY SKIP.**
+**No new-ledger mutation for unmigrated legacy accessory orders.**
 
-In INVENTORY mode, any operation that would change accessory inventory effects for such an order must **fail explicitly**, not return success while leaving stock unchanged.
+In INVENTORY mode, status changes and accessory reconcile on such orders **succeed** without creating or fulfilling a `Reservation`. The new inventory ledger (`InventoryBalance` / `StockMovement`) is **not** adjusted. This is intentional so day-to-day order workflow is not blocked by cutover debt.
 
-### Domain error
+### Explicit freeze still blocks
 
-```text
-code: LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED
-message: This order was created before inventory cutover and requires transition
-         handling before its accessory inventory can be changed.
-```
+If an admin applied **FREEZE** via Cutover UI (`LegacyOrderTransition`), inventory-affecting paths still throw `LEGACY_ORDER_FROZEN_FOR_CUTOVER`.
 
-HTTP mapping: **400** with `{ error, code }` (via `reservationErrorToHttp`).
+### Domain error (removed as default)
 
-### Operations that enforce this
+`LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED` is **no longer** thrown for ordinary status/reconcile on unmigrated legacy accessory orders. Migration remains available as an optional admin action, not a gate.
 
-- `PATCH` order / pillow-order **status** changes that would fulfill, reverse, or return accessories
-- `PUT /orders/:id/full` accessory reconcile when lines/status imply inventory work
-- Any future path that calls `OrderAccessoryInventory.onStatusChangeInTx` / `reconcileOrderAccessoriesInTx` with `hasAccessoryLines` / non-empty lines
+### Operations covered
+
+- `PATCH` order / pillow-order **status** changes → skip inventory when no reservation
+- `PUT /orders/:id/full` accessory reconcile → skip when no reservation
+- Paths calling `OrderAccessoryInventory.onStatusChangeInTx` / `reconcileOrderAccessoriesInTx`
 
 Orders **without** accessory lines remain unaffected (no reservation required).
+Inventory-native orders **with** a `Reservation` keep fulfill / reverse / return behavior unchanged.
 
 ---
 
@@ -73,11 +74,10 @@ Do **not** automatically:
 
 1. create reservations for production legacy orders  
 2. assign Warehouse / Showroom (or any default location)  
-3. close or cancel production orders  
-4. change production order statuses  
-5. restore `Pillow.stock` to a historical value  
+3. restore `Pillow.stock` to a historical value  
+4. mutate the new inventory ledger for unmigrated legacy accessory orders  
 
-Operators must choose an explicit transition later.
+Status changes on those orders are allowed with inventory skipped. Optional admin transitions (CLOSE / FREEZE / MIGRATE) remain available in Cutover UI.
 
 ---
 
@@ -107,8 +107,9 @@ For new orders with accessories in INVENTORY mode:
 | Case | Behavior |
 |------|----------|
 | New INVENTORY order + accessories, missing location | `INVENTORY_LOCATION_REQUIRED` |
-| Legacy order, `locationId = null`, no Reservation | `LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED` on inventory-affecting changes |
-| Legacy order, location set later without Reservation | Still migration-required until an explicit reservation exists |
+| Legacy order, no Reservation | Status/reconcile allowed; new inventory **skipped** |
+| Legacy order with admin FREEZE | `LEGACY_ORDER_FROZEN_FOR_CUTOVER` |
+| Legacy order after explicit MIGRATE (has Reservation) | Normal INVENTORY fulfill / reverse / return |
 
 Null location remains an **identifier** of transition debt, not a cue to invent inventory.
 

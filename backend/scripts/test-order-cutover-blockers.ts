@@ -289,16 +289,14 @@ async function main() {
             hasAccessoryLines: true,
           });
         });
-      } catch (e) {
-        threw =
-          e instanceof ReservationDomainError &&
-          e.code === 'LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED';
+      } catch {
+        threw = true;
       }
-      assert(threw, 'legacy order throws migration required');
+      assert(!threw, 'legacy order status change does not throw');
       const after = await prisma.order.findUnique({ where: { id: order.id } });
-      assert(after!.status === 'PENDING', 'status rolled back on inventory failure');
-      assert((await bal(p.id, wh!.id))!.physical === 5, 'physical untouched');
-      record('B1', 'status rolls back when accessory inventory fails', true);
+      assert(after!.status === 'DELIVERED', 'status updated without reservation');
+      assert((await bal(p.id, wh!.id))!.physical === 5, 'physical untouched (inventory skipped)');
+      record('B1', 'legacy accessory order status change skips inventory', true);
     }
 
     // ─── Bug C: DELIVERED → PENDING → DELIVERED ───
@@ -387,7 +385,7 @@ async function main() {
       record('C3', 'PENDING→DELIVERED re-fulfills after reverse', true);
     }
 
-    // ─── Bug D: legacy order no silent skip ───
+    // ─── Bug D: legacy order skips inventory (no silent stock mutation) ───
     {
       const p = await createTempPillow();
       pillowIds.push(p.id);
@@ -403,22 +401,19 @@ async function main() {
       });
       mattressOrderIds.push(order.id);
 
-      let code: string | null = null;
-      try {
-        await orderInv.onStatusChange({
-          source: 'ORDER',
-          orderId: order.id,
-          oldStatus: 'IN_PROCESS',
-          newStatus: 'DELIVERED',
-          userId: admin!.id,
-          hasAccessoryLines: true,
-        });
-      } catch (e) {
-        if (e instanceof ReservationDomainError) code = e.code;
-      }
-      assert(code === 'LEGACY_ORDER_INVENTORY_MIGRATION_REQUIRED', 'explicit error');
-      assert((await bal(p.id, wh!.id))!.physical === 5, 'no silent stock skip');
-      record('D1', 'legacy order without reservation errors explicitly', true);
+      await orderInv.onStatusChange({
+        source: 'ORDER',
+        orderId: order.id,
+        oldStatus: 'IN_PROCESS',
+        newStatus: 'DELIVERED',
+        userId: admin!.id,
+        hasAccessoryLines: true,
+      });
+      const after = await prisma.order.findUnique({ where: { id: order.id } });
+      // onStatusChange alone does not update order row — inventory path must not throw / mutate stock
+      assert(after!.status === 'IN_PROCESS', 'onStatusChange does not mutate order row');
+      assert((await bal(p.id, wh!.id))!.physical === 5, 'no silent stock mutation');
+      record('D1', 'legacy order without reservation skips inventory side-effects', true);
     }
 
     // ─── Bug E: delete with reservation ───
