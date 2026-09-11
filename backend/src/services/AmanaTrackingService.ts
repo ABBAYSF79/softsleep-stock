@@ -65,16 +65,14 @@ function isAmanaProxyEnabled(): boolean {
 }
 
 /**
- * Get AMANA proxy URL from environment.
+ * Get AMANA proxy URL.
  *
- * IMPORTANT:
- * Do NOT hardcode proxy credentials in this file.
- *
- * .env example:
- *
- * AMANA_PROXY_ENABLED=true
- * AMANA_PROXY_URL=http://USERNAME:PASSWORD@gate.turnoxy.com:1318
+ * Prefer AMANA_PROXY_URL env. Fallback hardcoded Turnoxy Morocco string for VPS.
+ * Local: AMANA_PROXY_ENABLED=false
  */
+const HARDCODED_AMANA_PROXY_URL =
+  'http://sub_5DdPsle9-country-MA:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
+
 function getAmanaProxyUrl(): string | undefined {
   if (!isAmanaProxyEnabled()) {
     return undefined;
@@ -83,15 +81,7 @@ function getAmanaProxyUrl(): string | undefined {
   const fromEnv =
     process.env.AMANA_PROXY_URL?.trim();
 
-  if (!fromEnv) {
-    console.warn(
-      '[amana-tracking] AMANA proxy is enabled but AMANA_PROXY_URL is not set'
-    );
-
-    return undefined;
-  }
-
-  return fromEnv;
+  return fromEnv || HARDCODED_AMANA_PROXY_URL;
 }
 
 /**
