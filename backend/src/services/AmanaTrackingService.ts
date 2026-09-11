@@ -128,7 +128,7 @@ function redactProxyForLog(
  */
 function createAmanaProxyAgent(
   proxyUrl: string
-): HttpsProxyAgent {
+): HttpsProxyAgent<string> {
   const parsed = new URL(proxyUrl);
 
   if (
@@ -260,7 +260,7 @@ export function httpGetText(
     getAmanaProxyUrl();
 
   let proxyAgent:
-    | HttpsProxyAgent
+    | HttpsProxyAgent<string>
     | null = null;
 
   if (proxyUrl) {

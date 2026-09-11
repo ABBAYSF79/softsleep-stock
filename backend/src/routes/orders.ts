@@ -401,7 +401,7 @@ router.get('/', authMiddleware, async (req, res) => {
         : hasExplicitDateFilter
           ? undefined
           : DEFAULT_UNPAGINATED_LIMIT;
-    const skip = hasPagination ? (pageNum - 1) * limitNum : 0;
+    const skip = hasPagination && limitNum != null ? (pageNum - 1) * limitNum : 0;
 
     // Only compute counts for paginated responses to avoid extra DB load
     const total = hasPagination ? await prisma.order.count({ where }) : 0;
@@ -510,13 +510,14 @@ router.get('/', authMiddleware, async (req, res) => {
     
     // Return paginated response if page is provided
     if (hasPagination) {
+      const pageSize = limitNum ?? DEFAULT_PAGINATED_LIMIT;
       res.json({
         data: formattedOrders,
         meta: {
           total,
           page: pageNum,
-          limit: limitNum,
-          totalPages: Math.ceil(total / limitNum)
+          limit: pageSize,
+          totalPages: Math.ceil(total / pageSize)
         }
       });
     } else {
@@ -553,7 +554,7 @@ router.post('/', authMiddleware, async (req, res) => {
     
     let calculatedTotal = new Prisma.Decimal(0);
     let calculatedCommission = new Prisma.Decimal(0);
-    const orderItems = [];
+    const orderItems: any[] = [];
     const orderPillowItems: any[] = [];
     
     // Get commission settings

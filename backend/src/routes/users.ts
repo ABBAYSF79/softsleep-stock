@@ -320,7 +320,7 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
           ? Number(linkedSalesUserId)
           : existingUser.linkedSalesUserId;
 
-      if (!Number.isFinite(parsedLinkedSalesUserId)) {
+      if (parsedLinkedSalesUserId == null || !Number.isFinite(parsedLinkedSalesUserId)) {
         return res.status(400).json({ error: 'Linked admin account is required for suivi users' });
       }
 
