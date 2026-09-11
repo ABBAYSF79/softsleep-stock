@@ -2,7 +2,7 @@ import {
   Activity,
   BarChart3,
   FileText,
-  LayoutDashboard,
+  Home,
   LayoutGrid,
   LineChart,
   Lock,
@@ -47,6 +47,8 @@ export interface NavItem {
 
 export const APP_NAME = "Matelas Stock";
 export const APP_TAGLINE = "SoftSleep Management";
+/** Bump when deploying frontend — visible in sidebar so you can confirm the server build. */
+export const APP_VERSION = "v2026.09.11a";
 
 export const NAV_GROUPS: NavGroup[] = [
   { id: "main", label: "Main" },
@@ -60,10 +62,11 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = [
   {
-    title: "Matelas Stock",
+    title: "Home",
     path: "/",
-    icon: LayoutDashboard,
+    icon: Home,
     group: "main",
+    exact: true,
   },
   {
     title: "Products",

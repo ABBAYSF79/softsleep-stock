@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   APP_NAME,
   APP_TAGLINE,
+  APP_VERSION,
   NAV_GROUPS,
   filterNavItems,
 } from "./nav-config";
@@ -164,15 +165,24 @@ export const Sidebar = ({
         })}
       </nav>
 
-      {/* User footer */}
-      {!collapsed && user && (
-        <div className="shrink-0 border-t border-gray-200/80 p-3">
-          <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+      {/* User footer + deploy version marker */}
+      <div className="shrink-0 border-t border-gray-200/80 p-3">
+        {!collapsed && user && (
+          <div className="mb-2 rounded-lg bg-gray-50 px-3 py-2.5">
             <p className="truncate text-sm font-medium text-gray-900">{user.name}</p>
             <p className="truncate text-xs text-muted-foreground">{user.role}</p>
           </div>
-        </div>
-      )}
+        )}
+        <p
+          className={cn(
+            "font-mono text-[10px] tracking-wide text-muted-foreground/90",
+            collapsed ? "text-center" : "px-1"
+          )}
+          title="Frontend build version — confirms deploy is live"
+        >
+          {APP_VERSION}
+        </p>
+      </div>
     </aside>
   );
 };
