@@ -1360,6 +1360,11 @@ export type AmanaTrackingDiData = AmanaTrackingData & {
   proxyLabel: string;
 };
 
+export type AmanaTrackingHproxyData = AmanaTrackingData & {
+  proxyProvider: "hproxy";
+  proxyLabel: string;
+};
+
 export const useAmanaTracking = (
   orderId: number | null | undefined,
   enabled = true
@@ -1400,6 +1405,28 @@ export const useAmanaTrackingDi = (
         signal,
       });
       return data as { success: boolean; data: AmanaTrackingDiData };
+    },
+  });
+};
+
+/** Parallel AMANA tracking via HProxy (test path — does not replace Turnoxy/DI). */
+export const useAmanaTrackingHproxy = (
+  orderId: number | null | undefined,
+  enabled = true
+) => {
+  return useQuery({
+    queryKey: ["amana-tracking-hproxy", "order", orderId],
+    enabled: enabled && Boolean(orderId),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get(`/amana-tracking-hproxy/order/${orderId}`, {
+        timeout: 30000,
+        signal,
+      });
+      return data as { success: boolean; data: AmanaTrackingHproxyData };
     },
   });
 };
