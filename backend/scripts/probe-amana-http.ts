@@ -110,7 +110,7 @@ Next checks on VPS:
   curl -4 -v --max-time 15 "${url}"
 
 If curl also times out, outbound 443 to this host is still blocked or filtered.
-Set AMANA_PROXY_URL (HTTP proxy with Morocco egress, e.g. Turnoxy) and re-run:
+Set AMANA_PROXY_URL (HTTP proxy with Morocco egress, e.g. HProxy) and re-run:
   AMANA_PROXY_URL='http://USER:PASS@HOST:PORT' npx ts-node scripts/probe-amana-http.ts
 `);
     process.exitCode = 1;

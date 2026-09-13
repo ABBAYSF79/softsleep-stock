@@ -25,7 +25,7 @@ const FETCH_TIMEOUT_PROXY_MS = 28_000;
 const AMANA_PROXY_ENABLED = true;
 
 const HARDCODED_AMANA_PROXY_URL =
-  'http://sub_5DdPsle9-country-MA:CjHFFnPfV2Olnvhv@gate.turnoxy.com:1318';
+  'http://hproxy_k2tku9j13wto-type-residential-country-ma:84c6e6ab-0176-4d69-9f26-386107cb06dd@premium.hproxy.com:9000';
 
 function isAmanaProxyEnabled(): boolean {
   const env = process.env.AMANA_PROXY_ENABLED?.trim().toLowerCase();
@@ -118,7 +118,7 @@ function openHttpProxyTunnel(
         socket.destroy();
         const code = res.statusCode || 0;
         const hint =
-          code === 407 ? ' (bad user/pass — use exact Turnoxy HTTP string)' : '';
+          code === 407 ? ' (bad user/pass — check HProxy credentials)' : '';
         finish(() =>
           reject(new Error(`Proxy CONNECT failed with status ${code}${hint}`))
         );
@@ -131,7 +131,7 @@ function openHttpProxyTunnel(
       const code = res.statusCode || 0;
       res.resume();
       const hint =
-        code === 407 ? ' (bad user/pass — use exact Turnoxy HTTP string)' : '';
+        code === 407 ? ' (bad user/pass — check HProxy credentials)' : '';
       finish(() =>
         reject(new Error(`Proxy CONNECT failed with status ${code}${hint}`))
       );
@@ -297,7 +297,7 @@ export function httpGetText(urlString: string, timeoutMs: number): Promise<HttpG
             finish(() =>
               reject(
                 new Error(
-                  'Proxy authentication failed (407). Check Turnoxy credentials.'
+                  'Proxy authentication failed (407). Check HProxy credentials.'
                 )
               )
             );
@@ -467,7 +467,7 @@ export class AmanaTrackingService {
       });
       if (response.statusCode === 407) {
         throw new AmanaTrackingError(
-          'Turnoxy proxy rejected username/password (HTTP 407). Check AMANA_PROXY_URL.',
+          'HProxy rejected username/password (HTTP 407). Check AMANA_PROXY_URL.',
           'UPSTREAM_ERROR',
           response.body.slice(0, 200)
         );

@@ -42,13 +42,11 @@ import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdf } from "@/utils/order-management-pdf";
 import { OrderFollowUpSheet } from "@/components/orders/OrderFollowUpSheet";
 import { AmanaTrackingSheet } from "@/components/orders/AmanaTrackingSheet";
-import { AmanaTrackingDiSheet } from "@/components/orders/AmanaTrackingDiSheet";
-import { AmanaTrackingHproxySheet } from "@/components/orders/AmanaTrackingHproxySheet";
 import { OrderManagementToolbar } from "@/components/orders/OrderManagementToolbar";
 import { OrderQuickStatusControl } from "@/components/orders/OrderQuickStatusControl";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, FlaskConical, History, MessageSquare, MoreHorizontal, Pencil, Printer, Radar, Trash2, Truck } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, History, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 import { canTrackAmanaOrder } from "@/utils/amanaTracking";
@@ -77,10 +75,6 @@ const OrderManagement = () => {
   const [isSuiviOpen, setIsSuiviOpen] = useState(false);
   const [trackingOrder, setTrackingOrder] = useState<any>(null);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
-  const [trackingDiOrder, setTrackingDiOrder] = useState<any>(null);
-  const [isTrackingDiOpen, setIsTrackingDiOpen] = useState(false);
-  const [trackingHproxyOrder, setTrackingHproxyOrder] = useState<any>(null);
-  const [isTrackingHproxyOpen, setIsTrackingHproxyOpen] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -223,15 +217,6 @@ const OrderManagement = () => {
     setIsTrackingOpen(true);
   }, []);
 
-  const handleOpenAmanaTrackingDi = useCallback((order: any) => {
-    setTrackingDiOrder(order);
-    setIsTrackingDiOpen(true);
-  }, []);
-
-  const handleOpenAmanaTrackingHproxy = useCallback((order: any) => {
-    setTrackingHproxyOrder(order);
-    setIsTrackingHproxyOpen(true);
-  }, []);
 
   const handleQuickStatusChange = useCallback(
     async (args: { id: number; status: string; trackingCode?: string }) => {
@@ -528,8 +513,6 @@ const OrderManagement = () => {
                     onOpenGuarantee={handleOpenGuarantee}
                     onOpenSuivi={handleOpenSuivi}
                     onOpenAmanaTracking={handleOpenAmanaTracking}
-                    onOpenAmanaTrackingDi={handleOpenAmanaTrackingDi}
-                    onOpenAmanaTrackingHproxy={handleOpenAmanaTrackingHproxy}
                     onNavigateAdvanced={handleNavigateAdvanced}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
@@ -613,8 +596,6 @@ const OrderManagement = () => {
                         onOpenGuarantee={handleOpenGuarantee}
                         onOpenSuivi={handleOpenSuivi}
                         onOpenAmanaTracking={handleOpenAmanaTracking}
-                        onOpenAmanaTrackingDi={handleOpenAmanaTrackingDi}
-                        onOpenAmanaTrackingHproxy={handleOpenAmanaTrackingHproxy}
                         onNavigateAdvanced={handleNavigateAdvanced}
                         onDelete={handleDeleteClick}
                         onCopyOrderInfo={handleCopyOrderInfo}
@@ -669,32 +650,6 @@ const OrderManagement = () => {
         order={trackingOrder}
         onOrderStatusPatched={(orderId, status) => {
           setTrackingOrder((prev: any) =>
-            prev && Number(prev.id) === orderId ? { ...prev, status } : prev
-          );
-        }}
-      />
-      <AmanaTrackingDiSheet
-        open={isTrackingDiOpen}
-        onOpenChange={(open) => {
-          setIsTrackingDiOpen(open);
-          if (!open) setTrackingDiOrder(null);
-        }}
-        order={trackingDiOrder}
-        onOrderStatusPatched={(orderId, status) => {
-          setTrackingDiOrder((prev: any) =>
-            prev && Number(prev.id) === orderId ? { ...prev, status } : prev
-          );
-        }}
-      />
-      <AmanaTrackingHproxySheet
-        open={isTrackingHproxyOpen}
-        onOpenChange={(open) => {
-          setIsTrackingHproxyOpen(open);
-          if (!open) setTrackingHproxyOrder(null);
-        }}
-        order={trackingHproxyOrder}
-        onOrderStatusPatched={(orderId, status) => {
-          setTrackingHproxyOrder((prev: any) =>
             prev && Number(prev.id) === orderId ? { ...prev, status } : prev
           );
         }}
@@ -822,8 +777,6 @@ type OrderRowProps = {
   onOpenGuarantee: (order: any) => void;
   onOpenSuivi: (order: any) => void;
   onOpenAmanaTracking: (order: any) => void;
-  onOpenAmanaTrackingDi: (order: any) => void;
-  onOpenAmanaTrackingHproxy: (order: any) => void;
   onNavigateAdvanced: (id: number) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
@@ -851,8 +804,6 @@ const OrderMobileCard = memo(function OrderMobileCard({
   onOpenGuarantee,
   onOpenSuivi,
   onOpenAmanaTracking,
-  onOpenAmanaTrackingDi,
-  onOpenAmanaTrackingHproxy,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -1029,38 +980,16 @@ const OrderMobileCard = memo(function OrderMobileCard({
             <History className="h-4 w-4" />
           </Button>
           {canTrackAmanaOrder(order) && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                aria-label="Track shipment (Turnoxy)"
-                title="Track shipment (Turnoxy)"
-                onClick={() => onOpenAmanaTracking(order)}
-              >
-                <Truck className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-teal-700 hover:bg-teal-50 hover:text-teal-900"
-                aria-label="Track shipment (DataImpulse test)"
-                title="Track shipment — DataImpulse TEST"
-                onClick={() => onOpenAmanaTrackingDi(order)}
-              >
-                <FlaskConical className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-amber-700 hover:bg-amber-50 hover:text-amber-900"
-                aria-label="Track shipment (HProxy test)"
-                title="Track shipment — HProxy TEST"
-                onClick={() => onOpenAmanaTrackingHproxy(order)}
-              >
-                <Radar className="h-4 w-4" />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Track shipment"
+              title="Track shipment"
+              onClick={() => onOpenAmanaTracking(order)}
+            >
+              <Truck className="h-4 w-4" />
+            </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1120,8 +1049,6 @@ const OrderRow = memo(function OrderRow({
   onOpenGuarantee,
   onOpenSuivi,
   onOpenAmanaTracking,
-  onOpenAmanaTrackingDi,
-  onOpenAmanaTrackingHproxy,
   onNavigateAdvanced,
   onDelete,
   onCopyOrderInfo,
@@ -1280,38 +1207,16 @@ const OrderRow = memo(function OrderRow({
             <History className="h-3.5 w-3.5" />
           </Button>
           {canTrackAmanaOrder(order) && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                aria-label="Track shipment (Turnoxy)"
-                title="Track shipment (Turnoxy)"
-                onClick={() => onOpenAmanaTracking(order)}
-              >
-                <Truck className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-teal-700 hover:bg-teal-50 hover:text-teal-900"
-                aria-label="Track shipment (DataImpulse test)"
-                title="Track shipment — DataImpulse TEST"
-                onClick={() => onOpenAmanaTrackingDi(order)}
-              >
-                <FlaskConical className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-amber-700 hover:bg-amber-50 hover:text-amber-900"
-                aria-label="Track shipment (HProxy test)"
-                title="Track shipment — HProxy TEST"
-                onClick={() => onOpenAmanaTrackingHproxy(order)}
-              >
-                <Radar className="h-3.5 w-3.5" />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              aria-label="Track shipment"
+              title="Track shipment"
+              onClick={() => onOpenAmanaTracking(order)}
+            >
+              <Truck className="h-3.5 w-3.5" />
+            </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
