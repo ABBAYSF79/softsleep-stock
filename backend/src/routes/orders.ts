@@ -301,6 +301,22 @@ router.get('/', authMiddleware, async (req, res) => {
       where.status = status.toString().toUpperCase();
     }
 
+    const statusesParam = firstQueryString(req.query.statuses);
+    if (statusesParam && statusesParam !== 'all') {
+      const allowed = new Set(Object.values(OrderStatus));
+      const list = [...new Set(
+        statusesParam
+          .split(',')
+          .map((s) => s.trim().toUpperCase())
+          .filter((s): s is OrderStatus => allowed.has(s as OrderStatus))
+      )];
+      if (list.length === 1) {
+        where.status = list[0];
+      } else if (list.length > 1) {
+        where.status = { in: list };
+      }
+    }
+
     if (search) {
       const searchStr = search.toString();
       where.OR = [
@@ -343,10 +359,28 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     const variantIdParam = parsePositiveInt(firstQueryString(variantId));
+    const productIdsParam = firstQueryString(req.query.productIds);
+    const productIdList = productIdsParam
+      ? [...new Set(
+          productIdsParam
+            .split(',')
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        )]
+      : [];
+
     if (variantIdParam !== null) {
       where.orderItems = {
         some: {
           variantId: variantIdParam,
+        },
+      };
+    } else if (productIdList.length > 0) {
+      where.orderItems = {
+        some: {
+          variant: {
+            productId: { in: productIdList },
+          },
         },
       };
     } else if (productId && productId !== 'all' && !Number.isNaN(Number(productId))) {
@@ -358,6 +392,10 @@ router.get('/', authMiddleware, async (req, res) => {
         }
       };
     }
+
+    const paidParam = firstQueryString(req.query.isPaid);
+    if (paidParam === 'true') where.isPaid = true;
+    if (paidParam === 'false') where.isPaid = false;
 
     // Date filtering
     if (dateFilter === 'today') {

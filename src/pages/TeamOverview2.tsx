@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { format, subDays } from "date-fns";
+import { format, subDays, subMonths } from "date-fns";
 import { DateRange } from "react-day-picker";
 import {
   Activity,
@@ -145,6 +145,7 @@ const TeamOverview2 = () => {
       lastWeek: "Last 7 days",
       lastMonth: "Last 30 days",
       thisMonth: format(new Date(), "MMMM yyyy"),
+      previousMonth: format(subMonths(new Date(), 1), "MMMM yyyy"),
     };
     return labels[appliedFilters.dateFilter];
   }, [appliedFilters.dateFilter, appliedFilters.dateRange]);
@@ -543,6 +544,7 @@ const TeamOverview2 = () => {
                   <SelectItem value="lastWeek">Last 7 days</SelectItem>
                   <SelectItem value="lastMonth">Last 30 days</SelectItem>
                   <SelectItem value="thisMonth">This month</SelectItem>
+                  <SelectItem value="previousMonth">Last month</SelectItem>
                   <SelectItem value="custom">Custom range</SelectItem>
                 </SelectContent>
               </Select>

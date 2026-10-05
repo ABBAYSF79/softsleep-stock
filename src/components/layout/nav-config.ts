@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  FileSpreadsheet,
   FileText,
   Home,
   LayoutGrid,
@@ -189,6 +190,13 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Activities",
     path: "/activities",
     icon: Activity,
+    group: "admin",
+    adminOnly: true,
+  },
+  {
+    title: "Export clients",
+    path: "/export-clients",
+    icon: FileSpreadsheet,
     group: "admin",
     adminOnly: true,
   },

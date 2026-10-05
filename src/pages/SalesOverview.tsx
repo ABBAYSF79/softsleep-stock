@@ -54,7 +54,7 @@ import {
 import { useDeliveryServices, useOrders, useUsers } from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
-import { format, subDays } from "date-fns";
+import { format, subDays, subMonths } from "date-fns";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -164,6 +164,7 @@ const SalesOverview = () => {
       lastWeek: "Last 7 days",
       lastMonth: "Last 30 days",
       thisMonth: format(new Date(), "MMMM yyyy"),
+      previousMonth: format(subMonths(new Date(), 1), "MMMM yyyy"),
     };
     return labels[dateFilter];
   }, [dateFilter, dateRange]);
@@ -414,6 +415,7 @@ const SalesOverview = () => {
                 <SelectItem value="lastWeek">Last 7 days</SelectItem>
                 <SelectItem value="lastMonth">Last 30 days</SelectItem>
                 <SelectItem value="thisMonth">This month</SelectItem>
+                <SelectItem value="previousMonth">Last month</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>

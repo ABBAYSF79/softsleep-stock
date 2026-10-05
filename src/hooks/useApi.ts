@@ -97,6 +97,11 @@ export interface OrderFilters {
   /** Substring / name match (sent with id for redundancy in production) */
   deliveryServiceName?: string;
   productId?: string;
+  /** Comma-separated product ids. Orders that contain any of them. */
+  productIds?: string;
+  /** Comma-separated statuses: PENDING,IN_PROCESS,DELIVERED,RETURNED */
+  statuses?: string;
+  isPaid?: "true" | "false";
   variantId?: string;
   confirmationUserId?: string | number;
   city?: string;

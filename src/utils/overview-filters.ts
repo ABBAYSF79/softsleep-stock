@@ -16,6 +16,7 @@ export type DateFilterPreset =
   | "lastWeek"
   | "lastMonth"
   | "thisMonth"
+  | "previousMonth"
   | "custom";
 
 export interface ConfirmationUserRecord {
@@ -71,6 +72,13 @@ export function buildDateRangeParams(
         startDate: startOfMonth(now).toISOString(),
         endDate: endOfDay(endOfMonth(now)).toISOString(),
       };
+    case "previousMonth": {
+      const previous = subMonths(now, 1);
+      return {
+        startDate: startOfMonth(previous).toISOString(),
+        endDate: endOfDay(endOfMonth(previous)).toISOString(),
+      };
+    }
     default:
       return {};
   }
@@ -92,6 +100,10 @@ export function getDateRangeFromPreset(preset: DateFilterPreset): DateRange | un
       return { from: startOfDay(subMonths(now, 1)), to: endOfDay(now) };
     case "thisMonth":
       return { from: startOfMonth(now), to: endOfDay(endOfMonth(now)) };
+    case "previousMonth": {
+      const previous = subMonths(now, 1);
+      return { from: startOfMonth(previous), to: endOfDay(endOfMonth(previous)) };
+    }
     case "custom":
       return undefined;
     default:

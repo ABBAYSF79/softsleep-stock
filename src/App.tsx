@@ -30,6 +30,7 @@ import ConfirmationTeam from "@/pages/ConfirmationTeam";
 import ConfirmationTeamOverview from "@/pages/ConfirmationTeamOverview";
 import TeamOverview2 from "@/pages/TeamOverview2";
 import AdvancedEdit from "@/pages/AdvancedEdit";
+import ClientExport from "@/pages/ClientExport";
 import InventoryOverviewPage from "@/pages/inventory/InventoryOverviewPage";
 import InventoryStockPage from "@/pages/inventory/InventoryStockPage";
 import InventoryReconciliationPage from "@/pages/inventory/InventoryReconciliationPage";
@@ -195,6 +196,11 @@ const App = () => (
             <Route path="/advanced-edit" element={
               <ProtectedRoute adminOnly>
                 <AdvancedEdit />
+              </ProtectedRoute>
+            } />
+            <Route path="/export-clients" element={
+              <ProtectedRoute adminOnly>
+                <ClientExport />
               </ProtectedRoute>
             } />
             <Route path="/invoice" element={

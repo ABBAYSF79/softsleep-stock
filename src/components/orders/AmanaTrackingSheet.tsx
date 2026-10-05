@@ -106,7 +106,7 @@ function TrackingTimeline({ data }: { data: AmanaTrackingData }) {
             </div>
             <div
               className={cn(
-                "min-w-0 rounded-xl px-3 py-2.5 transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                "min-w-0 rounded-xl px-3 py-2.5 transition-colors duration-500 ease-sheet",
                 isFirst
                   ? "bg-slate-900/[0.03] ring-1 ring-slate-900/[0.04]"
                   : "hover:bg-slate-50/80"
@@ -280,7 +280,7 @@ export function AmanaTrackingSheet({
             >
               <RotateCw
                 className={cn(
-                  "h-3.5 w-3.5 transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                  "h-3.5 w-3.5 transition-transform duration-700 ease-sheet",
                   isRefreshing && "animate-spin"
                 )}
               />
@@ -403,7 +403,7 @@ export function AmanaTrackingSheet({
                       type="button"
                       size="sm"
                       className={cn(
-                        "mt-3 h-9 gap-1.5 rounded-full px-4 text-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
+                        "mt-3 h-9 gap-1.5 rounded-full px-4 text-white shadow-sm transition-transform duration-300 ease-sheet active:scale-[0.98]",
                         suggestedStatus === "DELIVERED"
                           ? "bg-emerald-700 hover:bg-emerald-800"
                           : "bg-rose-700 hover:bg-rose-800"
