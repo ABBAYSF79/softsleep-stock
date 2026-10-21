@@ -332,6 +332,34 @@ export const useCreateOrder = () => {
   });
 };
 
+export const useDuplicateOrder = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, count = 1 }: { id: number; count?: number }) => {
+      const { data } = await api.post(`/orders/${id}/duplicate`, { count });
+      return data;
+    },
+    onSuccess: (data: { count?: number; orders?: Array<{ id: number }> }) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      const n = data?.count ?? data?.orders?.length ?? 1;
+      const ids = (data?.orders || []).map((o) => `#${o.id}`).join(', ');
+      toast.success(
+        n === 1
+          ? `Order duplicated${ids ? `: ${ids}` : ''}`
+          : `${n} orders created${ids ? `: ${ids}` : ''}`
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to duplicate order');
+    },
+  });
+};
+
 export interface OrderStatusUpdate {
   id: number;
   status?: string;
@@ -435,6 +463,29 @@ export const useFullUpdateOrder = () => {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update order');
     }
+  });
+};
+
+export const useQuickUpdateOrder = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const { data: response } = await api.put(`/orders/${id}/quick`, data);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['livreur-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast.success('Order updated successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update order');
+    },
   });
 };
 

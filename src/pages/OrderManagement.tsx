@@ -20,6 +20,8 @@ import { FloatingActionBar } from "@/components/common/FloatingActionBar";
 import { OrderManagementDialog } from "@/components/orders/OrderManagementDialog";
 import { OrderGuaranteeDialog } from "@/components/orders/OrderGuaranteeDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
+import { DuplicateOrderDialog } from "@/components/orders/DuplicateOrderDialog";
+import { SuiviWhatsAppDialog } from "@/components/orders/SuiviWhatsAppDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useDeleteOrder,
   useDeliveryServices,
+  useDuplicateOrder,
   usePaginatedOrders,
   useUpdateOrderStatus,
   useUsers,
@@ -46,7 +49,7 @@ import { OrderManagementToolbar } from "@/components/orders/OrderManagementToolb
 import { OrderQuickStatusControl } from "@/components/orders/OrderQuickStatusControl";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, Eye, FileSpreadsheet, FileText, History, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, Copy, CopyPlus, Eye, FileSpreadsheet, FileText, History, MessageCircle, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 import { canTrackAmanaOrder } from "@/utils/amanaTracking";
@@ -65,6 +68,9 @@ const OrderManagement = () => {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
+  const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
+  const [duplicatingOrder, setDuplicatingOrder] = useState<any>(null);
+  const duplicateOrderMutation = useDuplicateOrder();
   const [isTicketOpen, setIsTicketOpen] = useState(false);
   const [ticketOrder, setTicketOrder] = useState<any>(null);
   const [isGuaranteeOpen, setIsGuaranteeOpen] = useState(false);
@@ -75,6 +81,8 @@ const OrderManagement = () => {
   const [isSuiviOpen, setIsSuiviOpen] = useState(false);
   const [trackingOrder, setTrackingOrder] = useState<any>(null);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
+  const [whatsappOrder, setWhatsappOrder] = useState<any>(null);
+  const [isWhatsappOpen, setIsWhatsappOpen] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -217,6 +225,10 @@ const OrderManagement = () => {
     setIsTrackingOpen(true);
   }, []);
 
+  const handleOpenWhatsApp = useCallback((order: any) => {
+    setWhatsappOrder(order);
+    setIsWhatsappOpen(true);
+  }, []);
 
   const handleQuickStatusChange = useCallback(
     async (args: { id: number; status: string; trackingCode?: string }) => {
@@ -246,6 +258,24 @@ const OrderManagement = () => {
         onSuccess: () => {
           setIsDeleteDialogOpen(false);
           setDeletingOrder(null);
+        },
+      }
+    );
+  };
+
+  const handleDuplicateClick = useCallback((order: any) => {
+    setDuplicatingOrder(order);
+    setIsDuplicateDialogOpen(true);
+  }, []);
+
+  const handleConfirmDuplicate = (count: number) => {
+    if (!duplicatingOrder) return;
+    duplicateOrderMutation.mutate(
+      { id: Number(duplicatingOrder.id), count },
+      {
+        onSuccess: () => {
+          setIsDuplicateDialogOpen(false);
+          setDuplicatingOrder(null);
         },
       }
     );
@@ -319,6 +349,10 @@ const OrderManagement = () => {
 
   const handleNavigateAdvanced = useCallback((id: number) => {
     navigate(`/advanced-edit?orderId=${id}`);
+  }, [navigate]);
+
+  const handleNavigateQuickEdit = useCallback((id: number) => {
+    navigate(`/quick-edit?orderId=${id}`);
   }, [navigate]);
 
   const handleCopyOrderInfo = useCallback((order: any) => {
@@ -513,7 +547,10 @@ const OrderManagement = () => {
                     onOpenGuarantee={handleOpenGuarantee}
                     onOpenSuivi={handleOpenSuivi}
                     onOpenAmanaTracking={handleOpenAmanaTracking}
+                    onOpenWhatsApp={handleOpenWhatsApp}
                     onNavigateAdvanced={handleNavigateAdvanced}
+                    onNavigateQuickEdit={handleNavigateQuickEdit}
+                    onDuplicate={handleDuplicateClick}
                     onDelete={handleDeleteClick}
                     onCopyOrderInfo={handleCopyOrderInfo}
                     onQuickStatusChange={handleQuickStatusChange}
@@ -527,7 +564,7 @@ const OrderManagement = () => {
                 <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur [&_th]:tracking-[0.06em]">
                   <TableRow className="border-b border-gray-200 bg-gray-50/90 hover:bg-gray-50/90">
                     <TableHead className="h-10 w-10 px-3">
-                      {!isLivreur && !isSuivi && (
+                      {!isLivreur && (
                         <div className="flex items-center justify-center">
                           <Checkbox
                             checked={selectAllState}
@@ -596,7 +633,10 @@ const OrderManagement = () => {
                         onOpenGuarantee={handleOpenGuarantee}
                         onOpenSuivi={handleOpenSuivi}
                         onOpenAmanaTracking={handleOpenAmanaTracking}
+                        onOpenWhatsApp={handleOpenWhatsApp}
                         onNavigateAdvanced={handleNavigateAdvanced}
+                        onNavigateQuickEdit={handleNavigateQuickEdit}
+                        onDuplicate={handleDuplicateClick}
                         onDelete={handleDeleteClick}
                         onCopyOrderInfo={handleCopyOrderInfo}
                         onQuickStatusChange={handleQuickStatusChange}
@@ -667,6 +707,30 @@ const OrderManagement = () => {
         />
       )}
 
+      {!isLivreur && (
+        <DuplicateOrderDialog
+          open={isDuplicateDialogOpen}
+          onOpenChange={(open) => {
+            setIsDuplicateDialogOpen(open);
+            if (!open) setDuplicatingOrder(null);
+          }}
+          order={duplicatingOrder}
+          onConfirm={handleConfirmDuplicate}
+          isPending={duplicateOrderMutation.isPending}
+        />
+      )}
+
+      {isSuivi && (
+        <SuiviWhatsAppDialog
+          open={isWhatsappOpen}
+          onOpenChange={(open) => {
+            setIsWhatsappOpen(open);
+            if (!open) setWhatsappOrder(null);
+          }}
+          order={whatsappOrder}
+        />
+      )}
+
       <Dialog
         open={Boolean(barcodeValue)}
         onOpenChange={(open) => {
@@ -708,7 +772,7 @@ const OrderManagement = () => {
         </DialogContent>
       </Dialog>
 
-      <FloatingActionBar open={!isLivreur && !isSuivi && selectedIds.size > 0}>
+      <FloatingActionBar open={!isLivreur && selectedIds.size > 0}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <Badge variant="secondary" className="tabular-nums">
             {selectedIds.size} selected
@@ -777,7 +841,10 @@ type OrderRowProps = {
   onOpenGuarantee: (order: any) => void;
   onOpenSuivi: (order: any) => void;
   onOpenAmanaTracking: (order: any) => void;
+  onOpenWhatsApp: (order: any) => void;
   onNavigateAdvanced: (id: number) => void;
+  onNavigateQuickEdit: (id: number) => void;
+  onDuplicate: (order: any) => void;
   onDelete: (order: any) => void;
   onCopyOrderInfo: (order: any) => void;
   onQuickStatusChange: (args: {
@@ -804,7 +871,10 @@ const OrderMobileCard = memo(function OrderMobileCard({
   onOpenGuarantee,
   onOpenSuivi,
   onOpenAmanaTracking,
+  onOpenWhatsApp,
   onNavigateAdvanced,
+  onNavigateQuickEdit,
+  onDuplicate,
   onDelete,
   onCopyOrderInfo,
   onQuickStatusChange,
@@ -819,7 +889,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          {!isLivreur && !isSuivi && (
+          {!isLivreur && (
             <Checkbox
               checked={isSelected}
               onCheckedChange={() => onToggleSelected(Number(order.id))}
@@ -1008,6 +1078,24 @@ const OrderMobileCard = memo(function OrderMobileCard({
                   Copy order info
                 </DropdownMenuItem>
               )}
+              {!isLivreur && (
+                <DropdownMenuItem onClick={() => onDuplicate(order)}>
+                  <CopyPlus className="mr-2 h-4 w-4" />
+                  Duplicate order
+                </DropdownMenuItem>
+              )}
+              {isSuivi && (
+                <DropdownMenuItem onClick={() => onOpenWhatsApp(order)}>
+                  <MessageCircle className="mr-2 h-4 w-4 text-[#25D366]" />
+                  WhatsApp client
+                </DropdownMenuItem>
+              )}
+              {isSales && (
+                <DropdownMenuItem onClick={() => onNavigateQuickEdit(Number(order.id))}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Quick edit
+                </DropdownMenuItem>
+              )}
               {isAdmin && (
                 <>
                   <DropdownMenuItem onClick={() => onNavigateAdvanced(Number(order.id))}>
@@ -1049,7 +1137,10 @@ const OrderRow = memo(function OrderRow({
   onOpenGuarantee,
   onOpenSuivi,
   onOpenAmanaTracking,
+  onOpenWhatsApp,
   onNavigateAdvanced,
+  onNavigateQuickEdit,
+  onDuplicate,
   onDelete,
   onCopyOrderInfo,
   onQuickStatusChange,
@@ -1063,7 +1154,7 @@ const OrderRow = memo(function OrderRow({
       data-selected={isSelected ? "true" : "false"}
     >
       <TableCell className="w-10 px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-        {!isLivreur && !isSuivi && (
+        {!isLivreur && (
           <div className="flex items-center justify-center">
             <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelected(Number(order.id))} aria-label="Select row" />
           </div>
@@ -1233,6 +1324,24 @@ const OrderRow = memo(function OrderRow({
                 <DropdownMenuItem onClick={() => onCopyOrderInfo(order)}>
                   <Copy className="mr-2 h-4 w-4" />
                   Copy order info
+                </DropdownMenuItem>
+              )}
+              {!isLivreur && (
+                <DropdownMenuItem onClick={() => onDuplicate(order)}>
+                  <CopyPlus className="mr-2 h-4 w-4" />
+                  Duplicate order
+                </DropdownMenuItem>
+              )}
+              {isSuivi && (
+                <DropdownMenuItem onClick={() => onOpenWhatsApp(order)}>
+                  <MessageCircle className="mr-2 h-4 w-4 text-[#25D366]" />
+                  WhatsApp client
+                </DropdownMenuItem>
+              )}
+              {isSales && (
+                <DropdownMenuItem onClick={() => onNavigateQuickEdit(Number(order.id))}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Quick edit
                 </DropdownMenuItem>
               )}
               {isAdmin && (

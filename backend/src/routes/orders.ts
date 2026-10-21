@@ -871,6 +871,227 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * Duplicate an order N times (default 1).
+ * Copies customer, address, phone, city, delivery, note, items, supplements, location.
+ * New orders are always PENDING with no tracking code.
+ */
+router.post('/:id/duplicate', authMiddleware, async (req, res) => {
+  try {
+    try {
+      denyLivreurMutation(req.user!);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    const orderId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ error: 'Invalid order id' });
+    }
+
+    const rawCount = req.body?.count;
+    const count =
+      rawCount === undefined || rawCount === null || rawCount === ''
+        ? 1
+        : parseInt(String(rawCount), 10);
+    if (!Number.isInteger(count) || count < 1) {
+      return res.status(400).json({ error: 'Count must be an integer >= 1' });
+    }
+    if (count > 20) {
+      return res.status(400).json({ error: 'Count cannot exceed 20' });
+    }
+
+    const source = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderItems: true,
+        pillowItems: true,
+      },
+    });
+
+    if (!source) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const scopedDeliveryServiceIds = await getUserDeliveryServiceIds(req.user!.id);
+    try {
+      assertCanAccessOrder(req.user!, source, scopedDeliveryServiceIds);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    if (source.orderItems.length === 0 && source.pillowItems.length === 0) {
+      return res.status(400).json({ error: 'Cannot duplicate an order with no items' });
+    }
+
+    if (source.deliveryServiceId) {
+      try {
+        await assertSuiviDeliveryServiceAccess(req.user!, source.deliveryServiceId);
+      } catch (error) {
+        if (error instanceof OrderAccessError) {
+          return res.status(403).json({ error: error.message });
+        }
+        throw error;
+      }
+    }
+
+    // Stock check for mattress variants (PENDING does not deduct, but block obvious shortages)
+    for (const item of source.orderItems) {
+      const variant = await prisma.productVariant.findUnique({
+        where: { id: item.variantId },
+        include: { product: true },
+      });
+      if (!variant) {
+        return res.status(400).json({ error: `Variant ${item.variantId} not found` });
+      }
+      const needed = item.quantity * count;
+      if (variant.stock < needed) {
+        return res.status(400).json({
+          error: `Insufficient stock for ${variant.product.name} - ${variant.name}. Available: ${variant.stock}, Needed for ${count} order(s): ${needed}`,
+        });
+      }
+    }
+
+    const inventoryMode = await getInventoryMode(prisma);
+    if (inventoryMode !== 'INVENTORY') {
+      for (const pi of source.pillowItems) {
+        const pillow = await prisma.pillow.findUnique({ where: { id: pi.pillowId } });
+        if (!pillow) {
+          return res.status(400).json({ error: `Pillow ${pi.pillowId} not found` });
+        }
+        const needed = pi.quantity * count;
+        if (pillow.stock < needed) {
+          return res.status(400).json({
+            error: `Insufficient pillow stock for ${pillow.name}. Available: ${pillow.stock}, Needed for ${count} order(s): ${needed}`,
+          });
+        }
+      }
+    } else if (source.pillowItems.length > 0 && !source.locationId) {
+      return res.status(400).json({
+        error: 'Source order has no fulfillment location; cannot duplicate accessories in inventory mode',
+        code: 'INVENTORY_LOCATION_REQUIRED',
+      });
+    }
+
+    let sellerUserId: number;
+    if (req.user!.role === UserRole.ADMIN) {
+      // Keep original salesman ownership when admin duplicates
+      sellerUserId = source.userId;
+    } else if (req.user!.role === UserRole.SALES) {
+      sellerUserId = req.user!.id;
+    } else {
+      try {
+        sellerUserId = await resolveOrderSellerUserId(req.user!);
+      } catch (error) {
+        if (error instanceof OrderAccessError) {
+          return res.status(403).json({ error: error.message });
+        }
+        throw error;
+      }
+    }
+
+    const orderItemsData = source.orderItems.map((item) => ({
+      variantId: item.variantId,
+      quantity: item.quantity,
+      price: item.price,
+    }));
+    const pillowItemsData = source.pillowItems.map((pi) => ({
+      pillowId: pi.pillowId,
+      quantity: pi.quantity,
+      price: pi.price,
+    }));
+
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const created: Array<{ id: number }> = [];
+
+      for (let i = 0; i < count; i++) {
+        const order = await tx.order.create({
+          data: {
+            userId: sellerUserId,
+            enteredByUserId: req.user!.role === UserRole.SUIVI ? req.user!.id : null,
+            customerName: source.customerName,
+            address: source.address,
+            phone: source.phone,
+            city: source.city,
+            deliveryServiceId: source.deliveryServiceId,
+            totalAmount: source.totalAmount,
+            commission: source.commission,
+            status: 'PENDING',
+            confirmationUserId: source.confirmationUserId,
+            note: source.note,
+            trackingCode: null,
+            locationId: source.locationId,
+            orderItems: { create: orderItemsData },
+            ...(pillowItemsData.length
+              ? { pillowItems: { create: pillowItemsData } }
+              : {}),
+          } as unknown as Prisma.OrderCreateInput,
+          select: { id: true },
+        });
+
+        if (inventoryMode === 'INVENTORY' && pillowItemsData.length > 0) {
+          const consolidated = new Map<number, number>();
+          for (const pi of pillowItemsData) {
+            consolidated.set(pi.pillowId, (consolidated.get(pi.pillowId) || 0) + pi.quantity);
+          }
+          await orderAccessoryInventory.reserveMattressOrderInTx(tx, {
+            orderId: order.id,
+            locationId: source.locationId,
+            lines: Array.from(consolidated.entries()).map(([pillowId, quantity]) => ({
+              pillowId,
+              quantity,
+            })),
+            userId: req.user!.id,
+          });
+        }
+
+        created.push(order);
+      }
+
+      return created;
+    });
+
+    const newIds = createdOrders.map((o) => o.id);
+
+    await prisma.activity.create({
+      data: {
+        userId: req.user!.id,
+        type: 'ORDER_CREATE',
+        description: `Duplicated order #${orderId} → ${count} new order(s): ${newIds.map((id) => `#${id}`).join(', ')}`,
+        details: JSON.stringify({
+          sourceOrderId: orderId,
+          count,
+          newOrderIds: newIds,
+        }),
+      },
+    });
+
+    res.status(201).json({
+      sourceOrderId: orderId,
+      count: newIds.length,
+      orders: createdOrders,
+      message: `Created ${newIds.length} duplicate order(s)`,
+    });
+  } catch (error) {
+    const locErr = orderLocationErrorToHttp(error);
+    if (locErr) return res.status(locErr.status).json(locErr.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
+    console.error('Error duplicating order:', error);
+    res.status(400).json({
+      error: (error as Error).message || 'Failed to duplicate order',
+    });
+  }
+});
+
 // Update order status
 router.patch('/:id/status', authMiddleware, async (req, res) => {
   try {
@@ -1798,6 +2019,273 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       return res.status(mapped.status).json(mapped.body);
     }
     console.error('Error performing full update:', error);
+    res.status(500).json({ error: (error as Error).message || 'Failed to update order' });
+  }
+});
+
+/**
+ * Sales quick edit — limited fields only:
+ * customerName, phone, address, city, note, items, pillowItems (supplement).
+ * Status, tracking, delivery service, and location stay unchanged.
+ */
+router.put('/:id/quick', authMiddleware, async (req, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== UserRole.SALES && user.role !== UserRole.ADMIN) {
+      return res.status(403).json({ error: 'Only sales can perform quick edits' });
+    }
+
+    const { id } = req.params;
+    const { customerName, phone, address, city, items, pillowItems, note } = req.body;
+
+    if (!customerName || String(customerName).trim() === '') {
+      return res.status(400).json({ error: 'Customer name is required' });
+    }
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: 'Items array is required' });
+    }
+    if (items.length === 0 && !(Array.isArray(pillowItems) && pillowItems.length > 0)) {
+      return res.status(400).json({ error: 'Order must have at least one item or supplement' });
+    }
+
+    const orderId = parseInt(id, 10);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ error: 'Invalid order id' });
+    }
+
+    const currentOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true, pillowItems: true },
+    });
+
+    if (!currentOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const scopedDeliveryServiceIds =
+      user.role === UserRole.SALES ? [] : await getUserDeliveryServiceIds(user.id);
+    try {
+      assertCanAccessOrder(user, currentOrder, scopedDeliveryServiceIds);
+    } catch (error) {
+      if (error instanceof OrderAccessError) {
+        return res.status(403).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const inventoryMode = await getInventoryMode(tx);
+      const skipLegacyAccessoryStock = inventoryMode === 'INVENTORY';
+      const stockWasDeducted =
+        currentOrder.status === 'IN_PROCESS' || currentOrder.status === 'DELIVERED';
+
+      if (stockWasDeducted) {
+        for (const item of currentOrder.orderItems) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+
+        if (!skipLegacyAccessoryStock) {
+          for (const pi of currentOrder.pillowItems) {
+            const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+              SELECT id, stock FROM Pillow WHERE id = ${pi.pillowId} FOR UPDATE
+            `;
+            const pillow = locked[0];
+            if (!pillow) continue;
+            const previousStock = pillow.stock;
+            const newStock = previousStock + pi.quantity;
+            await tx.pillow.update({
+              where: { id: pi.pillowId },
+              data: { stock: newStock },
+            });
+            await tx.pillowStockHistory.create({
+              data: {
+                pillowId: pi.pillowId,
+                quantity: pi.quantity,
+                type: 'ADJUSTMENT',
+                reason: `Quick edit revert Order #${orderId}`,
+                previousStock,
+                newStock,
+                userId: user.id,
+              },
+            });
+          }
+        }
+      }
+
+      await tx.orderItem.deleteMany({ where: { orderId } });
+      await tx.orderPillowItem.deleteMany({ where: { orderId } });
+
+      const newOrderItems: Array<{ variantId: number; quantity: number; price: Prisma.Decimal }> = [];
+      let calculatedTotal = new Prisma.Decimal(0);
+      let calculatedPillowTotal = new Prisma.Decimal(0);
+      let calculatedCommission = new Prisma.Decimal(0);
+      const commissionSettings = await tx.commissionSettings.findFirst();
+
+      for (const item of items) {
+        const variantId = parseInt(item.variantId, 10);
+        const quantity = parseInt(item.quantity, 10);
+        if (!Number.isInteger(variantId) || variantId <= 0) throw new Error('Invalid variantId');
+        if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Invalid item quantity');
+
+        const variant = await tx.productVariant.findUnique({
+          where: { id: variantId },
+          include: { product: true },
+        });
+        if (!variant) throw new Error(`Variant ${variantId} not found`);
+
+        const price = new Prisma.Decimal(item.price ?? variant.price);
+        const itemTotal = price.mul(new Prisma.Decimal(quantity));
+        calculatedTotal = calculatedTotal.add(itemTotal);
+
+        if (variant.commission) {
+          calculatedCommission = calculatedCommission.add(
+            new Prisma.Decimal(variant.commission).mul(new Prisma.Decimal(quantity))
+          );
+        } else if (commissionSettings) {
+          if (commissionSettings.useFixedAmount && commissionSettings.defaultFixedAmount) {
+            calculatedCommission = calculatedCommission.add(
+              new Prisma.Decimal(commissionSettings.defaultFixedAmount)
+            );
+          } else {
+            calculatedCommission = calculatedCommission.add(
+              itemTotal.mul(new Prisma.Decimal(commissionSettings.defaultRate).div(100))
+            );
+          }
+        }
+
+        newOrderItems.push({ variantId, quantity, price });
+      }
+
+      const newPillowItems: Array<{ pillowId: number; quantity: number; price: Prisma.Decimal }> = [];
+      if (Array.isArray(pillowItems)) {
+        for (const item of pillowItems) {
+          const pillowId = parseInt(item.pillowId, 10);
+          const quantity = parseInt(item.quantity, 10);
+          if (!Number.isInteger(pillowId) || pillowId <= 0) throw new Error('Invalid pillowId');
+          if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Invalid pillow quantity');
+
+          const pillow = await tx.pillow.findUnique({ where: { id: pillowId } });
+          if (!pillow) throw new Error(`Pillow ${pillowId} not found`);
+
+          const price = new Prisma.Decimal(item.price ?? pillow.price);
+          calculatedPillowTotal = calculatedPillowTotal.add(price.mul(new Prisma.Decimal(quantity)));
+          newPillowItems.push({ pillowId, quantity, price });
+        }
+      }
+
+      const finalTotal = calculatedTotal.add(calculatedPillowTotal);
+      const finalStatus = currentOrder.status;
+
+      const order = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          customerName: String(customerName).trim(),
+          phone: phone != null ? String(phone) : currentOrder.phone,
+          address: address != null ? String(address) : currentOrder.address,
+          city: city != null ? String(city) : currentOrder.city,
+          note: note != null ? String(note) : currentOrder.note,
+          // Locked fields — sales cannot change these via quick edit
+          deliveryServiceId: currentOrder.deliveryServiceId,
+          status: finalStatus,
+          trackingCode: currentOrder.trackingCode,
+          locationId: currentOrder.locationId,
+          totalAmount: finalTotal,
+          commission: calculatedCommission,
+          orderItems: { create: newOrderItems },
+          ...(newPillowItems.length
+            ? { pillowItems: { create: newPillowItems } }
+            : {}),
+        },
+        include: {
+          orderItems: {
+            include: {
+              variant: { include: { product: true, size: true } },
+            },
+          },
+          pillowItems: { include: { pillow: true } },
+          location: { select: orderLocationSelect },
+        },
+      });
+
+      const stockShouldBeDeducted =
+        finalStatus === 'IN_PROCESS' || finalStatus === 'DELIVERED';
+
+      if (stockShouldBeDeducted) {
+        for (const item of newOrderItems) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
+
+        if (!skipLegacyAccessoryStock) {
+          for (const pi of newPillowItems) {
+            const locked = await tx.$queryRaw<Array<{ id: number; stock: number }>>`
+              SELECT id, stock FROM Pillow WHERE id = ${pi.pillowId} FOR UPDATE
+            `;
+            const pillow = locked[0];
+            if (!pillow) continue;
+            const previousStock = pillow.stock;
+            const newStock = previousStock - pi.quantity;
+            if (newStock < 0) throw new Error('Insufficient pillow stock');
+            await tx.pillow.update({
+              where: { id: pi.pillowId },
+              data: { stock: newStock },
+            });
+            await tx.pillowStockHistory.create({
+              data: {
+                pillowId: pi.pillowId,
+                quantity: -pi.quantity,
+                type: 'OUTGOING',
+                reason: `Quick edit apply Order #${orderId}`,
+                previousStock,
+                newStock,
+                userId: user.id,
+              },
+            });
+          }
+        }
+      }
+
+      if (skipLegacyAccessoryStock) {
+        await orderAccessoryInventory.reconcileOrderAccessoriesInTx(tx, {
+          orderId,
+          locationId: currentOrder.locationId,
+          status: finalStatus,
+          lines: newPillowItems.map((pi) => ({ pillowId: pi.pillowId, quantity: pi.quantity })),
+          userId: user.id,
+        });
+      }
+
+      return order;
+    });
+
+    await prisma.activity.create({
+      data: {
+        userId: user.id,
+        type: 'ORDER_UPDATE',
+        description: `Quick edit performed on Order #${orderId}`,
+        details: JSON.stringify({
+          orderId,
+          changes: 'Quick edit (customer, items, supplement, note)',
+        }),
+      },
+    });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    const locErr = orderLocationErrorToHttp(error);
+    if (locErr) return res.status(locErr.status).json(locErr.body);
+    const cutover = cutoverErrorToHttp(error);
+    if (cutover) return res.status(cutover.status).json(cutover.body);
+    if (error instanceof ReservationDomainError) {
+      const mapped = reservationErrorToHttp(error);
+      return res.status(mapped.status).json(mapped.body);
+    }
+    console.error('Error performing quick update:', error);
     res.status(500).json({ error: (error as Error).message || 'Failed to update order' });
   }
 });

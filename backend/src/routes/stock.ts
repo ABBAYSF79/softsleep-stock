@@ -46,8 +46,8 @@ function accumulateStockMovement(
   else if (type === 'INITIAL') row.initialQty += Math.max(0, quantity);
 }
 
-// Get stock overview (admin only)
-router.get('/', authMiddleware, adminOnly, async (req, res) => {
+// Get stock overview (any authenticated user — sales may read; mutations stay admin-only)
+router.get('/', authMiddleware, async (req, res) => {
   try {
     console.log('Fetching variants...');
     const variants = await prisma.productVariant.findMany({
@@ -488,8 +488,8 @@ async function handleStockHistoryQuery(
 router.get('/analytics', authMiddleware, adminOnly, handleStockAnalytics);
 router.get('/history-query', authMiddleware, adminOnly, handleStockHistoryQuery);
 
-// Get history for one variant (admin only) — dedicated drawer/timeline endpoint
-router.get('/:id/history', authMiddleware, adminOnly, async (req, res) => {
+// Get history for one variant (read-only for any authenticated user)
+router.get('/:id/history', authMiddleware, async (req, res) => {
   try {
     const variantId = parseInt(req.params.id, 10);
     if (!Number.isFinite(variantId) || variantId <= 0) {

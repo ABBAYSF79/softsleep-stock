@@ -26,8 +26,11 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { StockOperationDialog } from "@/components/stock/StockOperationDialog";
 import { StockHistorySheet } from "@/components/stock/StockHistorySheet";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Stock = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [stockFilter, setStockFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
@@ -118,7 +121,16 @@ const Stock = () => {
   return (
     <MainLayout>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Stock Management</h1>
+        <div>
+          <h1 className="text-2xl font-bold">
+            {isAdmin ? "Stock Management" : "Stock"}
+          </h1>
+          {!isAdmin && (
+            <p className="text-sm text-muted-foreground">
+              Read-only — you can view stock levels but cannot change them.
+            </p>
+          )}
+        </div>
         <Button
           variant="outline"
           onClick={() => refetch()}
@@ -231,16 +243,18 @@ const Stock = () => {
                     >
                       <History className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedVariant(item);
-                        setIsOperationDialogOpen(true);
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-1" /> Operations
-                    </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedVariant(item);
+                          setIsOperationDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Operations
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -260,11 +274,13 @@ const Stock = () => {
         />
       </div>
 
-      <StockOperationDialog
-        open={isOperationDialogOpen}
-        onOpenChange={setIsOperationDialogOpen}
-        variant={selectedVariant}
-      />
+      {isAdmin && (
+        <StockOperationDialog
+          open={isOperationDialogOpen}
+          onOpenChange={setIsOperationDialogOpen}
+          variant={selectedVariant}
+        />
+      )}
       <StockHistorySheet
         open={isHistoryOpen}
         onOpenChange={setIsHistoryOpen}

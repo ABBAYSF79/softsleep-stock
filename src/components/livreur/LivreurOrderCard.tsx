@@ -1,4 +1,4 @@
-import { CheckCircle2, Copy, MapPin, MessageCircle, MessageSquare, Phone } from "lucide-react";
+import { CheckCircle2, Copy, MapPin, MessageCircle, MessageSquare, Phone, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
@@ -114,6 +114,15 @@ export const LivreurOrderCard = ({
             </div>
             {order.deliveryService?.name && (
               <p className="text-xs text-muted-foreground">{order.deliveryService.name}</p>
+            )}
+            {order.confirmationUser?.name && (
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4 shrink-0 text-matles-600" />
+                <span>
+                  <span className="text-muted-foreground">Confirmation: </span>
+                  <span className="font-medium text-slate-800">{order.confirmationUser.name}</span>
+                </span>
+              </div>
             )}
             {order.note?.trim() && (
               <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-900">

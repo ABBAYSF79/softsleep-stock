@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
-import { BadgeCheck, Barcode, MapPin, MessageSquare, Phone, Printer } from "lucide-react";
+import { BadgeCheck, Barcode, MapPin, MessageSquare, Phone, Printer, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 
 interface LivreurOrderSheetProps {
@@ -102,6 +102,15 @@ export const LivreurOrderSheet = ({
                 )}
               </div>
             </div>
+            {order.confirmationUser?.name && (
+              <div className="flex items-center gap-2 text-slate-700">
+                <UserCheck className="h-4 w-4 shrink-0 text-matles-600" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Confirmation</p>
+                  <p className="font-medium">{order.confirmationUser.name}</p>
+                </div>
+              </div>
+            )}
             {order.trackingCode && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-slate-200 px-3 py-2">
                 <div>

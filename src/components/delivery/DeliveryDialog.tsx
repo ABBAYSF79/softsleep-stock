@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useCreateDeliveryService, useUpdateDeliveryService } from "@/hooks/useApi";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DeliveryDialogProps {
   open: boolean;
@@ -23,7 +24,11 @@ interface DeliveryDialogProps {
 }
 
 export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogProps) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const isEditing = !!delivery;
+  /** Sales / suivi can only manage cities, not create services or change name/active */
+  const citiesOnly = isEditing && !isAdmin;
   const [formData, setFormData] = useState({
     name: "",
     active: true,
@@ -77,13 +82,17 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
   };
 
   const handleSave = async () => {
-    // Validation
-    if (!formData.name.trim()) {
-      return; // Let the browser handle the required field
+    if (!citiesOnly && !formData.name.trim()) {
+      return;
     }
 
     if (formData.cities.length === 0) {
       alert("Please add at least one city");
+      return;
+    }
+
+    if (!isAdmin && !isEditing) {
+      alert("Only admins can create delivery services");
       return;
     }
 
@@ -93,7 +102,9 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
       if (isEditing) {
         await updateDeliveryService.mutateAsync({
           id: delivery.id,
-          data: formData
+          data: citiesOnly
+            ? { name: delivery.name, active: delivery.active, cities: formData.cities }
+            : formData,
         });
       } else {
         await createDeliveryService.mutateAsync(formData);
@@ -110,9 +121,19 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Delivery Service" : "Add New Delivery Service"}</DialogTitle>
+          <DialogTitle>
+            {citiesOnly
+              ? "Manage cities"
+              : isEditing
+                ? "Edit Delivery Service"
+                : "Add New Delivery Service"}
+          </DialogTitle>
           <DialogDescription>
-            {isEditing ? "Update cities and settings for this delivery service" : "Create a delivery service and add supported cities"}
+            {citiesOnly
+              ? `Add or remove cities for ${formData.name || "this service"}`
+              : isEditing
+                ? "Update cities and settings for this delivery service"
+                : "Create a delivery service and add supported cities"}
           </DialogDescription>
         </DialogHeader>
 
@@ -125,17 +146,20 @@ export const DeliveryDialog = ({ open, onOpenChange, delivery }: DeliveryDialogP
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               required
+              disabled={citiesOnly}
             />
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Switch 
-              id="active" 
-              checked={formData.active}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, active: checked }))}
-            />
-            <Label htmlFor="active">Active</Label>
-          </div>
+          {!citiesOnly && (
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="active" 
+                checked={formData.active}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, active: checked }))}
+              />
+              <Label htmlFor="active">Active</Label>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Cities</Label>

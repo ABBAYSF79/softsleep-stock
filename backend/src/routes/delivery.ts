@@ -80,13 +80,19 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Update delivery service (admin or suivi on assigned service)
+// Update delivery service
+// - ADMIN: full update (name, active, cities)
+// - SALES / SUIVI: cities only (name/active locked); SUIVI limited to assigned services
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const serviceId = parseInt(req.params.id);
     const role = req.user!.role;
 
-    if (role !== UserRole.ADMIN && role !== UserRole.SUIVI) {
+    if (
+      role !== UserRole.ADMIN &&
+      role !== UserRole.SUIVI &&
+      role !== UserRole.SALES
+    ) {
       return res.status(403).json({ error: 'You do not have permission to update delivery services' });
     }
 
@@ -101,28 +107,44 @@ router.put('/:id', authMiddleware, async (req, res) => {
       }
     }
 
-    const { name, active, cities } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: 'Service name is required' });
+    const existing = await prisma.deliveryService.findUnique({
+      where: { id: serviceId },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: 'Delivery service not found' });
     }
+
+    const { name, active, cities } = req.body;
 
     if (!cities || !Array.isArray(cities) || cities.length === 0) {
       return res.status(400).json({ error: 'At least one city is required' });
     }
 
+    const normalizedCities = cities
+      .map((c: unknown) => String(c).trim())
+      .filter((c: string) => c.length > 0);
+    const uniqueCities = Array.from(new Set(normalizedCities));
+    if (uniqueCities.length === 0) {
+      return res.status(400).json({ error: 'At least one city is required' });
+    }
+
+    const isAdmin = role === UserRole.ADMIN;
+    if (isAdmin && !name) {
+      return res.status(400).json({ error: 'Service name is required' });
+    }
+
     const service = await prisma.deliveryService.update({
       where: { id: serviceId },
       data: {
-        name,
-        active,
-        cities: JSON.stringify(cities),
+        name: isAdmin ? name : existing.name,
+        active: isAdmin ? active : existing.active,
+        cities: JSON.stringify(uniqueCities),
       },
     });
 
     res.json({
       ...service,
-      cities,
+      cities: uniqueCities,
     });
   } catch (error) {
     console.error('Error updating delivery service:', error);

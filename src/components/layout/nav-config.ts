@@ -9,6 +9,7 @@ import {
   Lock,
   Package,
   Package2,
+  Pencil,
   Settings,
   ShoppingCart,
   Truck,
@@ -81,7 +82,6 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/stock",
     icon: Package,
     group: "catalog",
-    adminOnly: true,
   },
   {
     title: "Inventory",
@@ -111,6 +111,12 @@ export const NAV_ITEMS: NavItem[] = [
     group: "orders",
     highlight: true,
     suiviAllowed: true,
+  },
+  {
+    title: "Quick Edit",
+    path: "/quick-edit",
+    icon: Pencil,
+    group: "orders",
   },
   {
     title: "Sales Overview",
