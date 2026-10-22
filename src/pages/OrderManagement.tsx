@@ -743,15 +743,15 @@ const OrderManagement = () => {
           </DialogHeader>
           {barcodeValue && (
             <div className="space-y-3">
-              <div className="bg-white rounded-md border p-4 w-full max-w-full overflow-x-auto">
+              <div className="bg-white rounded-md border p-6 w-full max-w-full overflow-x-auto">
                 <div className="min-w-max flex justify-center">
                   <Barcode
                     value={barcodeValue}
                     format="CODE128"
                     displayValue
-                    height={92}
-                    width={1.25}
-                    fontSize={14}
+                    height={220}
+                    width={3.5}
+                    fontSize={24}
                     margin={0}
                   />
                 </div>
