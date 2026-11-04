@@ -9,9 +9,6 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Stock from "./pages/Stock";
-import PillowStock from "./pages/PillowStock";
-import PillowOrders from "./pages/PillowOrders";
-import PillowStockAnalytics from "./pages/PillowStockAnalytics";
 import Orders from "./pages/Orders";
 import OrderManagement from "./pages/OrderManagement";
 import LivreurOrders from "./pages/LivreurOrders";
@@ -32,17 +29,7 @@ import TeamOverview2 from "@/pages/TeamOverview2";
 import AdvancedEdit from "@/pages/AdvancedEdit";
 import QuickEdit from "@/pages/QuickEdit";
 import ClientExport from "@/pages/ClientExport";
-import InventoryOverviewPage from "@/pages/inventory/InventoryOverviewPage";
-import InventoryStockPage from "@/pages/inventory/InventoryStockPage";
-import InventoryReconciliationPage from "@/pages/inventory/InventoryReconciliationPage";
-import InventoryLocationsPage from "@/pages/inventory/InventoryLocationsPage";
-import InventoryTransfersPage from "@/pages/inventory/InventoryTransfersPage";
-import InventoryTransferDetailPage from "@/pages/inventory/InventoryTransferDetailPage";
-import InventoryDocumentsPage from "@/pages/inventory/InventoryDocumentsPage";
-import InventoryDocumentDetailPage from "@/pages/inventory/InventoryDocumentDetailPage";
-import InventoryHistoryPage from "@/pages/inventory/InventoryHistoryPage";
-import InventoryReservationsPage from "@/pages/inventory/InventoryReservationsPage";
-import InventoryCutoverPage from "@/pages/inventory/InventoryCutoverPage";
+import ConfirmationPortal from "@/pages/ConfirmationPortal";
 import { LayoutDashboard, Package, ShoppingCart, LineChart, UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -64,6 +51,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/mes-commandes" element={<ConfirmationPortal />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <Dashboard />
@@ -77,76 +65,6 @@ const App = () => (
             <Route path="/stock" element={
               <ProtectedRoute>
                 <Stock />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory" element={
-              <ProtectedRoute adminOnly>
-                <InventoryOverviewPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/stock" element={
-              <ProtectedRoute adminOnly>
-                <InventoryStockPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/locations" element={
-              <ProtectedRoute adminOnly>
-                <InventoryLocationsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/transfers" element={
-              <ProtectedRoute adminOnly>
-                <InventoryTransfersPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/transfers/:id" element={
-              <ProtectedRoute adminOnly>
-                <InventoryTransferDetailPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/documents" element={
-              <ProtectedRoute adminOnly>
-                <InventoryDocumentsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/documents/:id" element={
-              <ProtectedRoute adminOnly>
-                <InventoryDocumentDetailPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/reservations" element={
-              <ProtectedRoute adminOnly>
-                <InventoryReservationsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/history" element={
-              <ProtectedRoute adminOnly>
-                <InventoryHistoryPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/reconciliation" element={
-              <ProtectedRoute adminOnly>
-                <InventoryReconciliationPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/inventory/cutover" element={
-              <ProtectedRoute adminOnly>
-                <InventoryCutoverPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/pillow-stock" element={
-              <ProtectedRoute adminOnly>
-                <PillowStock />
-              </ProtectedRoute>
-            } />
-            <Route path="/pillow-orders" element={
-              <ProtectedRoute>
-                <PillowOrders />
-              </ProtectedRoute>
-            } />
-            <Route path="/pillow-stock-analytics" element={
-              <ProtectedRoute adminOnly>
-                <PillowStockAnalytics />
               </ProtectedRoute>
             } />
             <Route path="/orders" element={

@@ -11,6 +11,7 @@ export type OrdersPdfExportOptions = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pending",
+  REPORTED: "Reporté",
   IN_PROCESS: "In Process",
   DELIVERED: "Delivered",
   RETURNED: "Returned",

@@ -17,7 +17,7 @@ function mapRow(row: {
   orderId: number | null;
   pillowOrderId: number | null;
   userId: number | null;
-  user: { id: number; name: string } | null;
+  user: { id: number; name: string; role: string } | null;
 }) {
   return {
     id: row.id,
@@ -27,6 +27,7 @@ function mapRow(row: {
     pillowOrderId: row.pillowOrderId,
     userId: row.userId,
     userName: row.user?.name ?? 'Utilisateur supprimé',
+    userRole: row.user?.role ?? null,
   };
 }
 
@@ -65,48 +66,6 @@ router.post('/order/:orderId', authMiddleware, async (req, res) => {
     const mapped = followUpErrorToHttp(error);
     if (mapped) return res.status(mapped.status).json(mapped.body);
     console.error('Error creating order follow-up:', error);
-    res.status(500).json({ error: 'Failed to create follow-up' });
-  }
-});
-
-/**
- * GET /api/order-followups/pillow-order/:pillowOrderId
- */
-router.get('/pillow-order/:pillowOrderId', authMiddleware, async (req, res) => {
-  try {
-    const pillowOrderId = Number(req.params.pillowOrderId);
-    if (!Number.isInteger(pillowOrderId) || pillowOrderId <= 0) {
-      return res.status(400).json({ error: 'Invalid pillowOrderId' });
-    }
-    const rows = await service.listForPillowOrder(pillowOrderId, req.user!);
-    res.json({ pillowOrderId, items: rows.map(mapRow) });
-  } catch (error) {
-    const mapped = followUpErrorToHttp(error);
-    if (mapped) return res.status(mapped.status).json(mapped.body);
-    console.error('Error listing pillow-order follow-ups:', error);
-    res.status(500).json({ error: 'Failed to list follow-ups' });
-  }
-});
-
-/**
- * POST /api/order-followups/pillow-order/:pillowOrderId
- */
-router.post('/pillow-order/:pillowOrderId', authMiddleware, async (req, res) => {
-  try {
-    const pillowOrderId = Number(req.params.pillowOrderId);
-    if (!Number.isInteger(pillowOrderId) || pillowOrderId <= 0) {
-      return res.status(400).json({ error: 'Invalid pillowOrderId' });
-    }
-    const created = await service.createForPillowOrder(
-      pillowOrderId,
-      req.user!,
-      req.body?.content
-    );
-    res.status(201).json(mapRow(created));
-  } catch (error) {
-    const mapped = followUpErrorToHttp(error);
-    if (mapped) return res.status(mapped.status).json(mapped.body);
-    console.error('Error creating pillow-order follow-up:', error);
     res.status(500).json({ error: 'Failed to create follow-up' });
   }
 });

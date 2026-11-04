@@ -9,14 +9,13 @@ import {
   useQuickUpdateOrder,
   useProducts,
   useDeliveryServices,
-  usePillowStock,
 } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Search, Save, Plus, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatPrice } from "@/utils/order-utils";
+import { formatPrice, isOpenOrderStatus } from "@/utils/order-utils";
 import { useSearchParams } from "react-router-dom";
 
 const QuickEdit = () => {
@@ -35,9 +34,6 @@ const QuickEdit = () => {
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState<string>("");
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
-  const [selectedPillowId, setSelectedPillowId] = useState("");
-  const [pillowQty, setPillowQty] = useState(1);
-
   const [formData, setFormData] = useState<any>({
     customerName: "",
     phone: "",
@@ -47,6 +43,7 @@ const QuickEdit = () => {
     note: "",
     items: [],
     pillowItems: [],
+    customTotal: "",
   });
 
   const { user } = useAuth();
@@ -55,8 +52,6 @@ const QuickEdit = () => {
   const quickUpdateMutation = useQuickUpdateOrder();
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
-  const { data: pillows } = usePillowStock();
-
   const calculateTotal = (items: any[], pillowItems: any[]) => {
     const itemsTotal = (Array.isArray(items) ? items : []).reduce(
       (sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 0),
@@ -112,6 +107,23 @@ const QuickEdit = () => {
     try {
       const { data } = await api.get(`/orders/${id}`);
       setOrder(data);
+      const loadedItems = (data.items || []).map((item: any) => ({
+        variantId: item.variantId,
+        quantity: item.quantity,
+        price: parseFloat(item.price),
+        productName: item.product?.name || "Unknown Product",
+        variantName: item.variant?.name || "Unknown Variant",
+      }));
+      const loadedPillowItems = Array.isArray(data.pillowItems)
+        ? data.pillowItems.map((pi: any) => ({
+            pillowId: pi.pillowId,
+            pillowName: pi.pillowName || pi.pillow?.name || "Accessoire",
+            quantity: Number(pi.quantity),
+            price: parseFloat(pi.price ?? pi.pillow?.price ?? 0),
+          }))
+        : [];
+      const savedTotal = Number(data.totalAmount);
+      const computedTotal = calculateTotal(loadedItems, loadedPillowItems);
       setFormData({
         customerName: data.customerName,
         phone: data.phone || "",
@@ -119,21 +131,12 @@ const QuickEdit = () => {
         city: data.city || "",
         deliveryServiceId: data.deliveryServiceId?.toString() || "",
         note: data.note || "",
-        items: (data.items || []).map((item: any) => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: parseFloat(item.price),
-          productName: item.product?.name || "Unknown Product",
-          variantName: item.variant?.name || "Unknown Variant",
-        })),
-        pillowItems: Array.isArray(data.pillowItems)
-          ? data.pillowItems.map((pi: any) => ({
-              pillowId: pi.pillowId,
-              pillowName: pi.pillowName || pi.pillow?.name || "Accessoire",
-              quantity: Number(pi.quantity),
-              price: parseFloat(pi.price ?? pi.pillow?.price ?? 0),
-            }))
-          : [],
+        items: loadedItems,
+        pillowItems: loadedPillowItems,
+        customTotal:
+          Number.isFinite(savedTotal) && Math.abs(savedTotal - computedTotal) > 0.009
+            ? String(savedTotal)
+            : "",
       });
       toast.success("Order loaded");
     } catch (error) {
@@ -163,6 +166,13 @@ const QuickEdit = () => {
       return;
     }
 
+    const customTotalRaw = String(formData.customTotal ?? "").trim();
+    const customTotal = customTotalRaw === "" ? null : Number(customTotalRaw);
+    if (customTotal !== null && (!Number.isFinite(customTotal) || customTotal < 0)) {
+      toast.error("Prix total personnalisé invalide");
+      return;
+    }
+
     quickUpdateMutation.mutate({
       id: order.id,
       data: {
@@ -181,6 +191,7 @@ const QuickEdit = () => {
           quantity: i.quantity,
           price: i.price,
         })),
+        ...(customTotal !== null && isOpenOrderStatus(order.status) ? { totalAmount: customTotal } : {}),
       },
     });
   };
@@ -257,42 +268,6 @@ const QuickEdit = () => {
     });
   };
 
-  const handleAddPillowItem = () => {
-    const pillowId = Number(selectedPillowId);
-    if (!Number.isInteger(pillowId) || pillowId <= 0) {
-      toast.error("Please select a supplement");
-      return;
-    }
-    if (pillowQty < 1) {
-      toast.error("Quantity must be at least 1");
-      return;
-    }
-    const pillow = (pillows as any[])?.find((p: any) => Number(p.id) === pillowId);
-    if (!pillow) return;
-
-    const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.slice() : [];
-    const idx = next.findIndex((x: any) => Number(x.pillowId) === pillowId);
-    const unitPrice = parseFloat(pillow.price);
-    if (idx >= 0) {
-      next[idx] = {
-        ...next[idx],
-        quantity: Number(next[idx].quantity || 0) + pillowQty,
-        price: unitPrice,
-        pillowName: pillow.name,
-      };
-    } else {
-      next.push({
-        pillowId,
-        pillowName: pillow.name,
-        quantity: pillowQty,
-        price: unitPrice,
-      });
-    }
-    setFormData({ ...formData, pillowItems: next });
-    setSelectedPillowId("");
-    setPillowQty(1);
-  };
-
   const handleRemovePillowItem = (pillowId: number) => {
     setFormData({
       ...formData,
@@ -307,6 +282,7 @@ const QuickEdit = () => {
       (service: any) => service.id.toString() === formData.deliveryServiceId
     )?.cities || [];
 
+  const productsLocked = Boolean(order) && !isOpenOrderStatus(order.status);
   const totalPreview = calculateTotal(formData.items || [], formData.pillowItems || []);
 
   if (!user || (!isSales && !isAdmin)) {
@@ -329,6 +305,7 @@ const QuickEdit = () => {
           </h1>
           <p className="text-sm text-muted-foreground">
             Edit name, phone, city, address, product, price, supplement, and note.
+            Product and price can only be changed while the order is PENDING or Reporté.
             Status and delivery service stay unchanged.
           </p>
         </div>
@@ -460,6 +437,18 @@ const QuickEdit = () => {
                 <CardTitle>Produit & Prix</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {productsLocked && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      Commande {order.status} : les produits et le prix ne peuvent être modifiés
+                      que lorsque la commande est PENDING ou Reporté. Vous pouvez toujours modifier les
+                      informations client et la note.
+                    </p>
+                  </div>
+                )}
+
+                {!productsLocked && (
                 <div className="mb-4 grid grid-cols-12 items-end gap-4 border-b pb-4">
                   <div className="col-span-6 space-y-2">
                     <Label>Produit</Label>
@@ -515,8 +504,9 @@ const QuickEdit = () => {
                     </Button>
                   </div>
                 </div>
+                )}
 
-                {lowStockWarning && (
+                {!productsLocked && lowStockWarning && (
                   <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3">
                     <div className="flex">
                       <AlertTriangle className="h-5 w-5 text-red-400" />
@@ -541,6 +531,7 @@ const QuickEdit = () => {
                       <Input
                         type="number"
                         value={item.quantity}
+                        disabled={productsLocked}
                         onChange={(e) => {
                           const newItems = [...formData.items];
                           newItems[index] = {
@@ -556,6 +547,7 @@ const QuickEdit = () => {
                       <Input
                         type="number"
                         value={item.price}
+                        disabled={productsLocked}
                         onChange={(e) => {
                           const newItems = [...formData.items];
                           newItems[index] = {
@@ -566,59 +558,21 @@ const QuickEdit = () => {
                         }}
                       />
                     </div>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      onClick={() => handleRemoveItem(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!productsLocked && (
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleRemoveItem(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 ))}
 
+                {(formData.pillowItems || []).length > 0 && (
                 <div className="space-y-4 border-t pt-4">
                   <div className="text-sm font-semibold">Supplément (accessoires)</div>
-                  <div className="grid grid-cols-12 items-end gap-4">
-                    <div className="col-span-7 space-y-2">
-                      <Label>Accessoire</Label>
-                      <SearchableSelect
-                        value={selectedPillowId}
-                        onValueChange={setSelectedPillowId}
-                        options={(Array.isArray(pillows) ? pillows : []).map((p: any) => {
-                          const stock = Number(p.stock || 0);
-                          const stockStatus =
-                            stock === 0
-                              ? " - OUT OF STOCK"
-                              : stock <= 3
-                                ? ` - LOW STOCK (${stock})`
-                                : ` - Stock: ${stock}`;
-                          return {
-                            label: `${p.name} (MAD ${formatPrice(p.price)})${stockStatus}`,
-                            value: String(p.id),
-                            disabled: stock === 0,
-                          };
-                        })}
-                        placeholder="Select accessoire"
-                        searchPlaceholder="Search..."
-                      />
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label>Qty</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={pillowQty}
-                        onChange={(e) =>
-                          setPillowQty(Math.max(1, parseInt(e.target.value) || 1))
-                        }
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Button type="button" onClick={handleAddPillowItem} className="w-full">
-                        <Plus className="mr-2 h-4 w-4" /> Add
-                      </Button>
-                    </div>
-                  </div>
 
                   {(formData.pillowItems || []).map((item: any, index: number) => (
                     <div
@@ -637,6 +591,7 @@ const QuickEdit = () => {
                           type="number"
                           min="1"
                           value={item.quantity}
+                          disabled={productsLocked}
                           onChange={(e) => {
                             const next = [...formData.pillowItems];
                             next[index] = {
@@ -653,6 +608,7 @@ const QuickEdit = () => {
                           type="number"
                           min="0"
                           value={item.price}
+                          disabled={productsLocked}
                           onChange={(e) => {
                             const next = [...formData.pillowItems];
                             next[index] = {
@@ -663,20 +619,68 @@ const QuickEdit = () => {
                           }}
                         />
                       </div>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleRemovePillowItem(Number(item.pillowId))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {!productsLocked && (
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => handleRemovePillowItem(Number(item.pillowId))}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
+                )}
 
-                <div className="text-right text-sm font-semibold">
-                  Total: MAD {formatPrice(totalPreview)}
+                {productsLocked ? (
+                  <div className="border-t pt-4 text-right text-sm font-semibold">
+                    Total: MAD {formatPrice(Number(order.totalAmount) || 0)}
+                  </div>
+                ) : (
+                <div className="flex flex-col gap-4 border-t pt-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="w-full space-y-2 sm:max-w-xs">
+                    <Label htmlFor="quick-edit-custom-total">Prix total personnalisé (MAD)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="quick-edit-custom-total"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={`Auto: ${formatPrice(totalPreview)}`}
+                        value={formData.customTotal}
+                        onChange={(e) => setFormData({ ...formData, customTotal: e.target.value })}
+                      />
+                      {String(formData.customTotal ?? "").trim() !== "" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setFormData({ ...formData, customTotal: "" })}
+                        >
+                          Auto
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Laisser vide pour calculer automatiquement à partir des produits.
+                    </p>
+                  </div>
+                  <div className="text-right text-sm">
+                    {String(formData.customTotal ?? "").trim() !== "" ? (
+                      <>
+                        <div className="text-muted-foreground line-through">
+                          Calculé: MAD {formatPrice(totalPreview)}
+                        </div>
+                        <div className="font-semibold">
+                          Total: MAD {formatPrice(Number(formData.customTotal) || 0)}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="font-semibold">Total: MAD {formatPrice(totalPreview)}</div>
+                    )}
+                  </div>
                 </div>
+                )}
               </CardContent>
             </Card>
 

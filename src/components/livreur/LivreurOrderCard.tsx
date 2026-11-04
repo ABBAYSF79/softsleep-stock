@@ -2,7 +2,8 @@ import { CheckCircle2, Copy, MapPin, MessageCircle, MessageSquare, Phone, UserCh
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
-import { buildOrderCopyText, formatPrice, openWhatsAppLocationRequest } from "@/utils/order-utils";
+import { ReportedUntilChip } from "@/components/orders/ReportDateFields";
+import { buildOrderCopyText, formatPrice, isOpenOrderStatus, openWhatsAppLocationRequest } from "@/utils/order-utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -22,7 +23,7 @@ export const LivreurOrderCard = ({
   isMarkingDelivered,
 }: LivreurOrderCardProps) => {
   const phone = order.phone?.trim();
-  const isPending = order.status === "PENDING";
+  const isPending = isOpenOrderStatus(order.status);
   const isDelivered = order.status === "DELIVERED";
 
   const handleWhatsAppLocation = () => {
@@ -115,6 +116,7 @@ export const LivreurOrderCard = ({
             {order.deliveryService?.name && (
               <p className="text-xs text-muted-foreground">{order.deliveryService.name}</p>
             )}
+            <ReportedUntilChip order={order} showReason />
             {order.confirmationUser?.name && (
               <div className="flex items-center gap-2">
                 <UserCheck className="h-4 w-4 shrink-0 text-matles-600" />

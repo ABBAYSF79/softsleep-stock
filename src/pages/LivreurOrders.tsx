@@ -27,10 +27,19 @@ import { OrderGuaranteeDialog } from "@/components/orders/OrderGuaranteeDialog";
 import { OrderTicketDialog } from "@/components/orders/OrderTicketDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  type OrderStatusUpdate,
   useDeliveryServices,
   usePaginatedOrders,
   useUpdateOrderStatus,
 } from "@/hooks/useApi";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  ReportDateFields,
+  emptyReportDate,
+  isReportDateValid,
+  type ReportDateValue,
+} from "@/components/orders/ReportDateFields";
+import { formatReportDate, reportDateYmd } from "@/utils/order-utils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Search, X } from "lucide-react";
 import Barcode from "react-barcode";
@@ -46,6 +55,9 @@ const LivreurOrders = () => {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deliveringOrderId, setDeliveringOrderId] = useState<number | null>(null);
+  const [reportingOrderId, setReportingOrderId] = useState<number | null>(null);
+  const [reportOrder, setReportOrder] = useState<any>(null);
+  const [reportForm, setReportForm] = useState<ReportDateValue>(emptyReportDate);
   const [savingNoteOrderId, setSavingNoteOrderId] = useState<number | null>(null);
   const [confirmDeliverOrder, setConfirmDeliverOrder] = useState<any>(null);
   const [ticketOrder, setTicketOrder] = useState<any>(null);
@@ -147,6 +159,61 @@ const LivreurOrders = () => {
     }
   };
 
+  const openReportForm = (order: any) => {
+    setReportForm(
+      order.status === "REPORTED"
+        ? { date: reportDateYmd(order.reportedUntil) ?? "", reason: order.reportReason ?? "" }
+        : emptyReportDate()
+    );
+    setReportOrder(order);
+  };
+
+  const applyStatusUpdate = async (order: any, update: Omit<OrderStatusUpdate, "id">, successMessage: string) => {
+    setReportingOrderId(order.id);
+    try {
+      const updated = await updateOrderStatus.mutateAsync({ id: order.id, ...update });
+      toast.success(successMessage);
+      setSelectedOrder((prev: any) =>
+        prev?.id === order.id
+          ? {
+              ...prev,
+              status: updated.status,
+              reportedUntil: updated.reportedUntil,
+              reportReason: updated.reportReason,
+            }
+          : prev
+      );
+      refetch();
+      return true;
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Échec de la mise à jour");
+      return false;
+    } finally {
+      setReportingOrderId(null);
+    }
+  };
+
+  const submitReport = async () => {
+    if (!reportOrder) return;
+    if (!isReportDateValid(reportForm)) {
+      toast.error("Choisissez une date de report (aujourd'hui ou plus tard)");
+      return;
+    }
+    const ok = await applyStatusUpdate(
+      reportOrder,
+      {
+        ...(reportOrder.status !== "REPORTED" ? { status: "REPORTED" } : {}),
+        reportedUntil: reportForm.date,
+        reportReason: reportForm.reason.trim(),
+      },
+      `Commande #${reportOrder.id} reportée au ${formatReportDate(`${reportForm.date}T12:00:00Z`)}`
+    );
+    if (ok) setReportOrder(null);
+  };
+
+  const handleUnreport = (order: any) =>
+    applyStatusUpdate(order, { status: "PENDING" }, `Commande #${order.id} remise en attente`);
+
   const handleSaveNote = useCallback(
     async (orderId: number, note: string) => {
       setSavingNoteOrderId(orderId);
@@ -203,6 +270,7 @@ const LivreurOrders = () => {
               <SelectContent>
                 <SelectItem value="all">Tous statuts</SelectItem>
                 <SelectItem value="PENDING">En attente</SelectItem>
+                <SelectItem value="REPORTED">Reporté</SelectItem>
                 <SelectItem value="IN_PROCESS">En cours</SelectItem>
                 <SelectItem value="DELIVERED">Livré</SelectItem>
                 <SelectItem value="RETURNED">Retourné</SelectItem>
@@ -309,8 +377,11 @@ const LivreurOrders = () => {
         onOpenGuarantee={setGuaranteeOrder}
         onOpenTracking={setBarcodeValue}
         onMarkDelivered={handleMarkDelivered}
+        onReport={openReportForm}
+        onUnreport={handleUnreport}
         onSaveNote={handleSaveNote}
         isMarkingDelivered={selectedOrder ? deliveringOrderId === selectedOrder.id : false}
+        isTogglingReported={selectedOrder ? reportingOrderId === selectedOrder.id : false}
         isSavingNote={selectedOrder ? savingNoteOrderId === selectedOrder.id : false}
       />
 
@@ -354,6 +425,33 @@ const LivreurOrders = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <Sheet open={!!reportOrder} onOpenChange={(open) => !open && setReportOrder(null)}>
+        <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto rounded-t-2xl px-4 pb-8">
+          <SheetHeader className="text-left">
+            <SheetTitle>
+              {reportOrder?.status === "REPORTED" ? "Modifier la date de report" : "Reporter la commande"}
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              #{reportOrder?.id} · {reportOrder?.customerName}
+            </p>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            <ReportDateFields value={reportForm} onChange={setReportForm} idPrefix="livreur-report" />
+            <Button
+              type="button"
+              className="h-12 w-full bg-orange-600 text-base font-semibold hover:bg-orange-700"
+              disabled={!isReportDateValid(reportForm) || reportingOrderId === reportOrder?.id}
+              onClick={() => void submitReport()}
+            >
+              {reportingOrderId === reportOrder?.id ? "Enregistrement..." : "Confirmer le report"}
+            </Button>
+            <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setReportOrder(null)}>
+              Annuler
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={!!confirmDeliverOrder}

@@ -17,8 +17,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
-import { ORDER_STATUSES, generateAmanaTrackingCode } from "@/utils/order-utils";
-import { Car } from "lucide-react";
+import {
+  ReportDateFields,
+  emptyReportDate,
+  isReportDateValid,
+  type ReportDateValue,
+} from "@/components/orders/ReportDateFields";
+import { ORDER_STATUSES, generateAmanaTrackingCode, isOpenOrderStatus, reportDateYmd } from "@/utils/order-utils";
+import { CalendarClock, Car } from "lucide-react";
 import { toast } from "sonner";
 
 export type QuickStatusTarget = keyof typeof ORDER_STATUSES;
@@ -31,21 +37,24 @@ export function getQuickStatusTargets(
   const current = currentStatus?.toUpperCase();
 
   if (role.isLivreur) {
-    return current === "PENDING" ? ["DELIVERED"] : [];
+    if (current === "PENDING") return ["DELIVERED", "REPORTED"];
+    if (current === "REPORTED") return ["DELIVERED", "PENDING"];
+    return [];
   }
 
   if (role.isSuivi) {
-    if (current === "PENDING") return ["IN_PROCESS", "DELIVERED"];
+    if (current === "PENDING") return ["IN_PROCESS", "DELIVERED", "REPORTED"];
+    if (current === "REPORTED") return ["IN_PROCESS", "DELIVERED", "PENDING"];
     if (current === "IN_PROCESS") return ["DELIVERED", "RETURNED"];
     return [];
   }
 
   // ADMIN / SALES / others with full access
-  // PENDING never goes to RETURNED — no stock reservation yet
+  // PENDING / REPORTED never go to RETURNED — no stock reservation yet
   if (role.isAdmin || role.isSales) {
     return (Object.keys(ORDER_STATUSES) as QuickStatusTarget[]).filter((s) => {
       if (s === current) return false;
-      if (current === "PENDING" && s === "RETURNED") return false;
+      if (isOpenOrderStatus(current) && s === "RETURNED") return false;
       return true;
     });
   }
@@ -54,13 +63,13 @@ export function getQuickStatusTargets(
 }
 
 function requiresTrackingCode(from: string, to: string): boolean {
-  return from?.toUpperCase() === "PENDING" && to?.toUpperCase() === "IN_PROCESS";
+  return isOpenOrderStatus(from) && to?.toUpperCase() === "IN_PROCESS";
 }
 
 type PendingChange = {
   order: any;
   nextStatus: QuickStatusTarget;
-  mode: "tracking" | "confirm";
+  mode: "tracking" | "confirm" | "report";
 };
 
 type OrderQuickStatusControlProps = {
@@ -74,6 +83,8 @@ type OrderQuickStatusControlProps = {
     id: number;
     status: string;
     trackingCode?: string;
+    reportedUntil?: string;
+    reportReason?: string;
   }) => void | Promise<void>;
 };
 
@@ -92,6 +103,7 @@ export function OrderQuickStatusControl({
 }: OrderQuickStatusControlProps) {
   const [pending, setPending] = useState<PendingChange | null>(null);
   const [trackingCode, setTrackingCode] = useState("");
+  const [report, setReport] = useState<ReportDateValue>(emptyReportDate);
   const [submitting, setSubmitting] = useState(false);
 
   const targets = useMemo(
@@ -105,6 +117,8 @@ export function OrderQuickStatusControl({
     [order?.status, isAdmin, isSuivi, isLivreur, isSales]
   );
 
+  const canReschedule = order?.status === "REPORTED" && (isAdmin || isSales || isSuivi || isLivreur);
+
   useEffect(() => {
     if (!pending) return;
     setTrackingCode(
@@ -112,13 +126,22 @@ export function OrderQuickStatusControl({
         ? pending.order.trackingCode
         : ""
     );
+    setReport(
+      pending.mode === "report" && pending.order?.status === "REPORTED"
+        ? { date: reportDateYmd(pending.order.reportedUntil) ?? "", reason: pending.order.reportReason ?? "" }
+        : emptyReportDate()
+    );
   }, [pending]);
 
   const requestChange = (nextStatus: QuickStatusTarget) => {
-    if (disabled || nextStatus === order?.status) return;
-    const mode = requiresTrackingCode(order?.status, nextStatus)
-      ? "tracking"
-      : "confirm";
+    if (disabled) return;
+    if (nextStatus === order?.status && nextStatus !== "REPORTED") return;
+    const mode =
+      nextStatus === "REPORTED"
+        ? "report"
+        : requiresTrackingCode(order?.status, nextStatus)
+          ? "tracking"
+          : "confirm";
     setPending({ order, nextStatus, mode });
   };
 
@@ -134,6 +157,10 @@ export function OrderQuickStatusControl({
       toast.error("Tracking code is required");
       return;
     }
+    if (pending.mode === "report" && !isReportDateValid(report)) {
+      toast.error("Choisissez une date de report (aujourd'hui ou plus tard)");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -143,6 +170,9 @@ export function OrderQuickStatusControl({
         ...(pending.mode === "tracking"
           ? { trackingCode: trackingCode.trim() }
           : {}),
+        ...(pending.mode === "report"
+          ? { reportedUntil: report.date, reportReason: report.reason.trim() }
+          : {}),
       });
       setPending(null);
       setTrackingCode("");
@@ -151,6 +181,8 @@ export function OrderQuickStatusControl({
     }
   };
 
+  const isReschedule = pending?.mode === "report" && pending.order?.status === "REPORTED";
+
   const nextLabel =
     pending && ORDER_STATUSES[pending.nextStatus]
       ? ORDER_STATUSES[pending.nextStatus].label
@@ -158,7 +190,7 @@ export function OrderQuickStatusControl({
 
   return (
     <>
-      {targets.length === 0 ? (
+      {targets.length === 0 && !canReschedule ? (
         <OrderStatusBadge status={order?.status} />
       ) : (
         <DropdownMenu>
@@ -186,6 +218,15 @@ export function OrderQuickStatusControl({
                 {ORDER_STATUSES[value].label}
               </DropdownMenuItem>
             ))}
+            {canReschedule && (
+              <DropdownMenuItem
+                disabled={disabled}
+                onSelect={() => requestChange("REPORTED")}
+              >
+                <CalendarClock className="mr-2 h-4 w-4 text-orange-600" />
+                Modifier la date de report
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -204,17 +245,23 @@ export function OrderQuickStatusControl({
             <DialogTitle>
               {pending?.mode === "tracking"
                 ? "Tracking code requis"
-                : "Confirmer le statut"}
+                : pending?.mode === "report"
+                  ? isReschedule
+                    ? "Modifier la date de report"
+                    : "Reporter la commande"
+                  : "Confirmer le statut"}
             </DialogTitle>
             <DialogDescription>
               Commande #{pending?.order?.id} —{" "}
               {ORDER_STATUSES[pending?.order?.status as QuickStatusTarget]
-                ?.label || pending?.order?.status}{" "}
-              → {nextLabel}
+                ?.label || pending?.order?.status}
+              {!isReschedule && <> → {nextLabel}</>}
             </DialogDescription>
           </DialogHeader>
 
-          {pending?.mode === "tracking" ? (
+          {pending?.mode === "report" ? (
+            <ReportDateFields value={report} onChange={setReport} idPrefix={`quick-report-${pending.order?.id}`} />
+          ) : pending?.mode === "tracking" ? (
             <div className="space-y-3 py-1">
               <p className="text-sm text-slate-600">
                 Pour passer en <strong>In Process</strong>, saisissez le code
@@ -271,7 +318,8 @@ export function OrderQuickStatusControl({
               onClick={() => void submitPending()}
               disabled={
                 submitting ||
-                (pending?.mode === "tracking" && !trackingCode.trim())
+                (pending?.mode === "tracking" && !trackingCode.trim()) ||
+                (pending?.mode === "report" && !isReportDateValid(report))
               }
               className="bg-matles-600 hover:bg-matles-700"
             >

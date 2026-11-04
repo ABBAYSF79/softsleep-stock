@@ -44,6 +44,7 @@ import {
   TrendingUp,
   Package,
   Clock,
+  CalendarClock,
   Truck,
   CheckCircle2,
   RotateCcw,
@@ -180,7 +181,7 @@ const SalesOverview = () => {
   }, [searchTerm, statusFilter, isAdmin, userFilter, deliveryServiceFilter, dateFilter]);
 
   const metrics = useMemo(() => {
-    const byStatus = { PENDING: 0, IN_PROCESS: 0, DELIVERED: 0, RETURNED: 0 };
+    const byStatus = { PENDING: 0, REPORTED: 0, IN_PROCESS: 0, DELIVERED: 0, RETURNED: 0 };
     let totalSales = 0;
     let totalCommission = 0;
 
@@ -479,7 +480,7 @@ const SalesOverview = () => {
 
         {/* KPI row */}
         <div
-          className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 ${
+          className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 ${
             isFetching ? "opacity-70" : ""
           }`}
         >
@@ -515,6 +516,11 @@ const SalesOverview = () => {
             label="Pending"
             value={metrics.PENDING}
             icon={<Clock className="h-4 w-4 text-yellow-600" />}
+          />
+          <DashboardStatCard
+            label="Reporté"
+            value={metrics.REPORTED}
+            icon={<CalendarClock className="h-4 w-4 text-orange-600" />}
           />
           <DashboardStatCard
             label="In process"

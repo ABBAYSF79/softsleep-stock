@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   DollarSign,
   Clock,
+  CalendarClock,
   Truck,
   CheckCircle2,
   RotateCcw,
@@ -236,6 +237,7 @@ const TeamOverview2 = () => {
   const stats = useMemo(() => {
     const byStatus = {
       PENDING: 0,
+      REPORTED: 0,
       IN_PROCESS: 0,
       DELIVERED: 0,
       RETURNED: 0,
@@ -663,7 +665,7 @@ const TeamOverview2 = () => {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
           <StatCard
             label="Total orders"
             value={stats.totalOrders}
@@ -684,6 +686,11 @@ const TeamOverview2 = () => {
             label="Pending"
             value={stats.PENDING}
             icon={<Clock className="h-4 w-4 text-yellow-600" />}
+          />
+          <StatCard
+            label="Reporté"
+            value={stats.REPORTED}
+            icon={<CalendarClock className="h-4 w-4 text-orange-600" />}
           />
           <StatCard
             label="In process"

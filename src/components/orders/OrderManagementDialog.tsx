@@ -16,20 +16,16 @@ import {
   OrderStatusUpdate,
   useCreateOrder,
   useDeliveryServices,
-  useInventoryLocations,
-  usePillowStock,
   useProducts,
   useUpdateOrderDelivery,
   useUpdateOrderStatus,
 } from "@/hooks/useApi";
-import { useInventoryMode } from "@/features/inventory/hooks/useInventoryQueries";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
   CalendarDays,
   Car,
-  MapPin,
   MessageSquare,
   Package,
   Plus,
@@ -39,7 +35,14 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode, sanitizePhoneInput, validatePhone } from "@/utils/order-utils";
+import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode, isOpenOrderStatus, reportDateYmd, sanitizePhoneInput, validatePhone } from "@/utils/order-utils";
+import {
+  ReportDateFields,
+  ReportedUntilChip,
+  emptyReportDate,
+  isReportDateValid,
+  type ReportDateValue,
+} from "@/components/orders/ReportDateFields";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -104,18 +107,16 @@ export const OrderManagementDialog = ({
   const [selectedVariant, setSelectedVariant] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [orderItems, setOrderItems] = useState<any[]>([]);
-  const [selectedPillowId, setSelectedPillowId] = useState<string>("");
-  const [pillowQty, setPillowQty] = useState(1);
   const [pillowItems, setPillowItems] = useState<any[]>([]);
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [manualTotal, setManualTotal] = useState<number | null>(null);
   const [selectedDeliveryService, setSelectedDeliveryService] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
-  const [locationId, setLocationId] = useState<string>("__none__");
   const [selectedConfirmationUser, setSelectedConfirmationUser] = useState<string>("none");
   const [note, setNote] = useState<string>("");
   const [trackingCode, setTrackingCode] = useState<string>("");
+  const [report, setReport] = useState<ReportDateValue>(emptyReportDate);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [deliveryChanged, setDeliveryChanged] = useState(false);
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
@@ -123,16 +124,10 @@ export const OrderManagementDialog = ({
   const { user } = useAuth();
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
-  const { data: pillows } = usePillowStock();
-  const { data: inventoryLocations = [] } = useInventoryLocations();
-  const { data: inventoryModeInfo } = useInventoryMode();
   const createOrder = useCreateOrder();
   const updateOrderStatus = useUpdateOrderStatus();
   const updateOrderDelivery = useUpdateOrderDelivery();
   const queryClient = useQueryClient();
-
-  const inventoryActive =
-    inventoryModeInfo?.mode === "INVENTORY" && Boolean(inventoryModeInfo?.initialized);
 
   const isAdmin = user?.role === "ADMIN";
   const isLivreur = user?.role === "LIVREUR";
@@ -140,16 +135,22 @@ export const OrderManagementDialog = ({
   const canOverrideTotal =
     user?.role === "ADMIN" || user?.role === "SALES" || user?.role === "SUIVI";
   const canEditTrackingCode = isViewing && (isAdmin || isSuivi) && status === "IN_PROCESS";
-  const canLivreurMarkDelivered = isViewing && isLivreur && originalStatus === "PENDING";
+  const canLivreurMarkDelivered = isViewing && isLivreur && isOpenOrderStatus(originalStatus);
   const canSuiviUpdateStatus =
-    isViewing && isSuivi && (originalStatus === "PENDING" || originalStatus === "IN_PROCESS");
+    isViewing && isSuivi && (isOpenOrderStatus(originalStatus) || originalStatus === "IN_PROCESS");
+  const canEditStatus = isAdmin || canLivreurMarkDelivered || canSuiviUpdateStatus;
+  const savedReportDate = reportDateYmd(order?.reportedUntil) ?? "";
+  const savedReportReason = order?.reportReason ?? "";
+  const reportChanged =
+    status === "REPORTED" &&
+    (originalStatus !== "REPORTED" || report.date !== savedReportDate || report.reason !== savedReportReason);
   const savedLivreurNote = (order?.livreurNote ?? "").trim();
   const savedSalesNote = (order?.note ?? "").trim();
   const canEditSalesNote =
     !isLivreur &&
     (isAdmin ||
       user?.role === "SALES" ||
-      (isSuivi && (originalStatus === "PENDING" || originalStatus === "IN_PROCESS")));
+      (isSuivi && (isOpenOrderStatus(originalStatus) || originalStatus === "IN_PROCESS")));
   const showLivreurNoteSection =
     isViewing && !isLivreur && (isAdmin || user?.role === "SALES" || isSuivi);
 
@@ -196,27 +197,25 @@ export const OrderManagementDialog = ({
       setPhone(order.phone || "");
       setSelectedDeliveryService(order.deliveryServiceId?.toString() || "");
       setSelectedCity(order.city || "");
-      setLocationId(order.locationId ? String(order.locationId) : "__none__");
       setSelectedConfirmationUser(order.confirmationUserId?.toString() || "none");
       setNote(order.note || "");
       setTrackingCode(order.trackingCode || "");
+      setReport({ date: reportDateYmd(order.reportedUntil) ?? "", reason: order.reportReason ?? "" });
       setManualTotal(order.totalAmount !== undefined && order.totalAmount !== null ? parseFloat(String(order.totalAmount)) : null);
     } else {
       setStatus("PENDING");
       setOriginalStatus("PENDING");
       setCustomerName("");
       setOrderItems([]);
-      setSelectedPillowId("");
-      setPillowQty(1);
       setPillowItems([]);
       setAddress("");
       setPhone("");
       setSelectedDeliveryService("");
       setSelectedCity("");
-      setLocationId("__none__");
       setSelectedConfirmationUser("none");
       setNote("");
       setTrackingCode("");
+      setReport(emptyReportDate());
       setLowStockWarning(null);
       setSelectedVariant("");
       setQuantity(1);
@@ -224,43 +223,6 @@ export const OrderManagementDialog = ({
       setPhoneError(null);
     }
   }, [order, open]);
-
-  // When inventory mode is on, default to Warehouse (WH-MAIN) for new orders.
-  useEffect(() => {
-    if (!open || order || !inventoryActive) return;
-    if (locationId !== "__none__") return;
-    const sellable = (inventoryLocations as any[]).filter(
-      (l) => l && l.active !== false && l.isSellable !== false
-    );
-    const preferred =
-      sellable.find((l) => String(l.code).toUpperCase() === "WH-MAIN") ||
-      sellable.find((l) => String(l.type).toUpperCase() === "WAREHOUSE") ||
-      sellable
-        .slice()
-        .sort(
-          (a, b) =>
-            Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0) ||
-            String(a.code || "").localeCompare(String(b.code || ""))
-        )[0];
-    if (preferred?.id) setLocationId(String(preferred.id));
-  }, [open, order, inventoryActive, inventoryLocations, locationId]);
-
-  const locationOptions = useMemo(() => {
-    const opts = (inventoryLocations as any[])
-      .filter((l) => l && l.active !== false && l.isSellable !== false)
-      .slice()
-      .sort(
-        (a, b) =>
-          Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0) ||
-          String(a.code || "").localeCompare(String(b.code || ""))
-      )
-      .map((l) => ({
-        label: `${l.name} (${l.code})`,
-        value: String(l.id),
-      }));
-    if (inventoryActive) return opts;
-    return [{ label: "No location (legacy)", value: "__none__" }, ...opts];
-  }, [inventoryLocations, inventoryActive]);
 
   const handlePhoneChange = (value: string) => {
     const sanitized = sanitizePhoneInput(value);
@@ -395,46 +357,6 @@ export const OrderManagementDialog = ({
     setOrderItems(newItems);
   };
 
-  const handleAddPillow = () => {
-    const pillowId = Number(selectedPillowId);
-    if (!Number.isInteger(pillowId) || pillowId <= 0) return;
-    if (!Number.isInteger(pillowQty) || pillowQty <= 0) return;
-
-    const pillow = (pillows as any[])?.find((p: any) => Number(p.id) === pillowId);
-    if (!pillow) return;
-
-    setPillowItems((prev) => {
-      const next = prev.slice();
-      const idx = next.findIndex((x) => Number(x.pillowId) === pillowId);
-      const existingQty = idx >= 0 ? Number(next[idx].quantity || 0) : 0;
-      const newQty = existingQty + pillowQty;
-
-      if (newQty > Number(pillow.stock || 0)) {
-        toast.error("Insufficient pillow stock");
-        return prev;
-      }
-
-      const row = {
-        pillowId,
-        pillowName: pillow.name,
-        quantity: newQty,
-        price: pillow.price,
-      };
-
-      if (idx >= 0) next[idx] = row;
-      else next.push(row);
-
-      return next;
-    });
-
-    setSelectedPillowId("");
-    setPillowQty(1);
-  };
-
-  const handleRemovePillow = (pillowId: number) => {
-    setPillowItems((prev) => prev.filter((x) => Number(x.pillowId) !== Number(pillowId)));
-  };
-
   const calculateTotal = () => {
     return orderItems.reduce((sum: number, item: any) => {
       const price = typeof item.price === "object" ? parseFloat(item.price.toString()) : item.price;
@@ -469,18 +391,32 @@ export const OrderManagementDialog = ({
     e.preventDefault();
 
     if (isViewing) {
+      if (reportChanged && !isReportDateValid(report)) {
+        toast.error("Choisissez une date de report (aujourd'hui ou plus tard)");
+        return;
+      }
+      const reportPayload = reportChanged
+        ? { reportedUntil: report.date, reportReason: report.reason.trim() }
+        : {};
+
       if (isLivreur) {
-        if (status !== "DELIVERED" || originalStatus !== "PENDING") {
-          toast.error("Livreur can only mark pending orders as delivered");
+        if (status === originalStatus && !reportChanged) {
+          toast.info("No changes were made");
+          onOpenChange(false);
+          return;
+        }
+        if (!isOpenOrderStatus(originalStatus) || !["DELIVERED", "PENDING", "REPORTED"].includes(status)) {
+          toast.error("Livreur can only deliver or postpone pending orders");
           return;
         }
 
         try {
           await updateOrderStatus.mutateAsync({
             id: order!.id,
-            status: "DELIVERED",
+            ...(status !== originalStatus ? { status } : {}),
+            ...reportPayload,
           });
-          toast.success("Order marked as delivered");
+          toast.success(status === "DELIVERED" ? "Order marked as delivered" : "Order status updated");
           onOpenChange(false);
           queryClient.invalidateQueries({ queryKey: ["orders"] });
         } catch (error: any) {
@@ -515,7 +451,12 @@ export const OrderManagementDialog = ({
         }
       }
 
-      if (status === originalStatus && note === order?.note && trackingCode === order?.trackingCode) {
+      if (
+        status === originalStatus &&
+        note === order?.note &&
+        trackingCode === order?.trackingCode &&
+        !reportChanged
+      ) {
         toast.info("No changes were made");
         onOpenChange(false);
         return;
@@ -527,6 +468,7 @@ export const OrderManagementDialog = ({
           status: status,
           note: note || undefined,
           trackingCode: trackingCode || undefined,
+          ...reportPayload,
         };
 
         if (status === originalStatus) {
@@ -574,11 +516,6 @@ export const OrderManagementDialog = ({
         return;
       }
 
-      if (inventoryActive && pillowItems.length > 0 && (locationId === "__none__" || !locationId)) {
-        toast.error("Select a fulfillment location for accessories (inventory mode)");
-        return;
-      }
-
       try {
         const orderData: Record<string, unknown> = {
           customerName,
@@ -590,18 +527,11 @@ export const OrderManagementDialog = ({
             variantId: item.variantId,
             quantity: item.quantity,
           })),
-          pillowItems: pillowItems.map((pi: any) => ({
-            pillowId: pi.pillowId,
-            quantity: pi.quantity,
-          })),
           confirmationUserId:
             selectedConfirmationUser === "none" ? null : parseInt(selectedConfirmationUser),
           note,
           status: "PENDING",
           trackingCode: undefined,
-          ...(locationId && locationId !== "__none__"
-            ? { locationId: Number(locationId) }
-            : {}),
         };
 
         if (manualTotalNumber !== null) {
@@ -642,14 +572,31 @@ export const OrderManagementDialog = ({
           {isViewing ? (
           <div className="space-y-5 py-4 sm:space-y-6 sm:py-5">
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <OrderStatusBadge status={status} />
-                <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-                  {order?.createdAt
-                    ? format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")
-                    : "—"}
-                </span>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <OrderStatusBadge status={status} />
+                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                    <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+                    Créée{" "}
+                    {order?.createdAt
+                      ? format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                  <span>
+                    <span className="font-medium text-slate-500">In process: </span>
+                    {order?.inProcessAt
+                      ? format(new Date(order.inProcessAt), "dd MMM yyyy · HH:mm")
+                      : "—"}
+                  </span>
+                  <span>
+                    <span className="font-medium text-slate-500">Delivered: </span>
+                    {order?.deliveredAt
+                      ? format(new Date(order.deliveredAt), "dd MMM yyyy · HH:mm")
+                      : "—"}
+                  </span>
+                </div>
               </div>
               <div className="text-left sm:text-right">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
@@ -708,9 +655,9 @@ export const OrderManagementDialog = ({
                           <SelectContent>
                             {Object.values(ORDER_STATUSES)
                               .filter((s) => {
-                                // PENDING has no stock reservation — cannot return
+                                // PENDING / REPORTED have no stock reservation — cannot return
                                 if (
-                                  originalStatus === "PENDING" &&
+                                  isOpenOrderStatus(originalStatus) &&
                                   s.value === "RETURNED"
                                 ) {
                                   return false;
@@ -731,6 +678,7 @@ export const OrderManagementDialog = ({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="REPORTED">Reporté</SelectItem>
                           <SelectItem value="DELIVERED">Delivered</SelectItem>
                         </SelectContent>
                       </Select>
@@ -740,9 +688,10 @@ export const OrderManagementDialog = ({
                           <SelectValue placeholder="Select status" />
                         </SelectTrigger>
                         <SelectContent>
-                          {originalStatus === "PENDING" && (
+                          {isOpenOrderStatus(originalStatus) && (
                             <>
                               <SelectItem value="PENDING">Pending</SelectItem>
+                              <SelectItem value="REPORTED">Reporté</SelectItem>
                               <SelectItem value="IN_PROCESS">In Process</SelectItem>
                               <SelectItem value="DELIVERED">Delivered</SelectItem>
                             </>
@@ -816,6 +765,16 @@ export const OrderManagementDialog = ({
                       )}
                     </div>
                   </div>
+
+                  {isViewing && status === "REPORTED" && (
+                    <div className="sm:col-span-2">
+                      {canEditStatus ? (
+                        <ReportDateFields value={report} onChange={setReport} idPrefix="order-dialog-report" />
+                      ) : (
+                        <ReportedUntilChip order={order} showReason />
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <Label htmlFor="deliveryService" className="text-slate-700">
@@ -1299,131 +1258,6 @@ export const OrderManagementDialog = ({
                     </ul>
                   </div>
                 )}
-
-                <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">Accessoires</p>
-                      <p className="text-xs text-slate-500">Supplement (optional)</p>
-                    </div>
-                    <Badge variant="secondary" className="tabular-nums">
-                      {pillowItems.length}
-                    </Badge>
-                  </div>
-
-                  {(inventoryActive || locationOptions.length > 1) && (
-                    <div className="mb-3 space-y-1.5">
-                      <Label className="text-slate-700">
-                        Location
-                        {inventoryActive && pillowItems.length > 0 ? (
-                          <span className="text-red-500"> *</span>
-                        ) : (
-                          <span className="font-normal text-slate-400">
-                            {" "}
-                            (stock accessoires)
-                          </span>
-                        )}
-                      </Label>
-                      <SearchableSelect
-                        value={locationId}
-                        onValueChange={setLocationId}
-                        options={
-                          locationOptions.length
-                            ? locationOptions
-                            : [{ label: "No sellable location configured", value: "__none__" }]
-                        }
-                        placeholder="Select location"
-                        searchPlaceholder="Search location..."
-                      />
-                      <p className="flex items-start gap-1.5 text-xs text-slate-500">
-                        <MapPin className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                        Emplacement pour réserver le stock accessoires (défaut: Warehouse).
-                      </p>
-                    </div>
-                  )}
-
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleAddPillow();
-                    }}
-                    className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_auto] sm:items-end"
-                  >
-                    <div className="space-y-1.5">
-                      <Label className="text-slate-700">Accessoire</Label>
-                      <SearchableSelect
-                        value={selectedPillowId}
-                        onValueChange={setSelectedPillowId}
-                        options={
-                          (pillows as any[])?.map((p: any) => ({
-                            label: `${p.name} (Stock: ${p.stock ?? 0})`,
-                            value: String(p.id),
-                            disabled: Number(p.stock ?? 0) <= 0,
-                          })) || []
-                        }
-                        placeholder="Select accessoire"
-                        searchPlaceholder="Search accessoire..."
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-slate-700">Qty</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={pillowQty}
-                        onChange={(e) => setPillowQty(parseInt(e.target.value) || 1)}
-                        className={cn(fieldClass, "tabular-nums")}
-                      />
-                    </div>
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      disabled={!selectedPillowId}
-                      className="h-10 border-slate-200 bg-white text-slate-700 hover:border-matles-300 hover:bg-matles-50 hover:text-matles-800"
-                    >
-                      <Plus className="mr-1.5 h-4 w-4" aria-hidden />
-                      Add
-                    </Button>
-                  </form>
-
-                  {pillowItems.length > 0 && (
-                    <ul className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
-                      {pillowItems.map((pi: any) => (
-                        <li
-                          key={pi.pillowId}
-                          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_56px_88px_40px]"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-800">
-                              {pi.pillowName}
-                            </p>
-                            <p className="text-xs text-slate-500 sm:hidden">
-                              qty {pi.quantity} · MAD {formatPrice(pi.price)}
-                            </p>
-                          </div>
-                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
-                            {pi.quantity}
-                          </div>
-                          <div className="hidden text-right text-sm tabular-nums text-slate-700 sm:block">
-                            {formatPrice(pi.price)}
-                          </div>
-                          <div className="flex justify-end">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemovePillow(pi.pillowId)}
-                              className="h-8 w-8 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                              aria-label="Remove accessoire"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
 
                 <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-4">
                   {canOverrideTotal ? (

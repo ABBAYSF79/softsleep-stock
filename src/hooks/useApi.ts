@@ -99,7 +99,9 @@ export interface OrderFilters {
   productId?: string;
   /** Comma-separated product ids. Orders that contain any of them. */
   productIds?: string;
-  /** Comma-separated statuses: PENDING,IN_PROCESS,DELIVERED,RETURNED */
+  /** "true" → REPORTED orders whose report date is today or past (or missing) */
+  reportDue?: string;
+  /** Comma-separated statuses: PENDING,REPORTED,IN_PROCESS,DELIVERED,RETURNED */
   statuses?: string;
   isPaid?: "true" | "false";
   variantId?: string;
@@ -292,12 +294,14 @@ export interface LivreurStats {
   month: string;
   totalMonth: number;
   pendingMonth: number;
+  reportedMonth?: number;
   inProcessMonth: number;
   deliveredMonth: number;
   returnedMonth: number;
   todayTotal: number;
   todayDelivered: number;
   allPending: number;
+  allReported?: number;
   deliveryRate: number;
 }
 
@@ -366,6 +370,9 @@ export interface OrderStatusUpdate {
   note?: string;
   livreurNote?: string;
   trackingCode?: string;
+  /** YYYY-MM-DD — required when moving to REPORTED */
+  reportedUntil?: string;
+  reportReason?: string;
 }
 
 export const useUpdateOrderStatus = () => {
@@ -590,390 +597,6 @@ export const useAddCorrection = () => {
   });
 };
 
-// Inventory locations (TASK 2 — read-only; no stock logic)
-export const useInventoryLocations = () => {
-  return useQuery({
-    queryKey: ['inventory-locations'],
-    queryFn: async () => {
-      const { data } = await api.get('/inventory/locations', { timeout: 15000 });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-// Inventory balances (TASK 3 — read-only; available is computed server-side)
-export const useInventoryBalances = (params?: { pillowId?: number; locationId?: number }) => {
-  return useQuery({
-    queryKey: [
-      'inventory-balances',
-      params?.pillowId ?? 'all',
-      params?.locationId ?? 'all',
-    ],
-    queryFn: async () => {
-      const { data } = await api.get('/inventory/balances', {
-        params: {
-          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
-          ...(params?.locationId ? { locationId: params.locationId } : {}),
-        },
-        timeout: 15000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-// Stock movements ledger (TASK 4 — read-only)
-export const useStockMovements = (params?: {
-  pillowId?: number;
-  locationId?: number;
-  type?: string;
-  referenceType?: string;
-  referenceId?: number;
-  limit?: number;
-}) => {
-  return useQuery({
-    queryKey: [
-      'inventory-movements',
-      params?.pillowId ?? 'all',
-      params?.locationId ?? 'all',
-      params?.type ?? 'all',
-      params?.referenceType ?? null,
-      params?.referenceId ?? null,
-      params?.limit ?? 50,
-    ],
-    queryFn: async () => {
-      const { data } = await api.get('/inventory/movements', {
-        params: {
-          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
-          ...(params?.locationId ? { locationId: params.locationId } : {}),
-          ...(params?.type ? { type: params.type } : {}),
-          ...(params?.referenceType ? { referenceType: params.referenceType } : {}),
-          ...(params?.referenceId ? { referenceId: params.referenceId } : {}),
-          ...(params?.limit ? { limit: params.limit } : {}),
-        },
-        timeout: 15000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-// Inventory transfers (TASK 5 — document foundation)
-export const useInventoryTransfers = (params?: { status?: string }) => {
-  return useQuery({
-    queryKey: ['inventory-transfers', params?.status ?? 'all'],
-    queryFn: async () => {
-      const { data } = await api.get('/inventory/transfers', {
-        params: { ...(params?.status ? { status: params.status } : {}) },
-        timeout: 15000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const useInventoryTransfer = (id?: number) => {
-  return useQuery({
-    queryKey: ['inventory-transfer', id ?? null],
-    queryFn: async () => {
-      const { data } = await api.get(`/inventory/transfers/${id}`, { timeout: 15000 });
-      return data;
-    },
-    enabled: Number.isInteger(id) && (id as number) > 0,
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const useInventoryDocuments = (params?: {
-  type?: string;
-  transferId?: number;
-  status?: string;
-}) => {
-  return useQuery({
-    queryKey: [
-      'inventory-documents',
-      params?.type ?? 'all',
-      params?.transferId ?? 'all',
-      params?.status ?? 'all',
-    ],
-    queryFn: async () => {
-      const { data } = await api.get('/inventory/documents', {
-        params: {
-          ...(params?.type ? { type: params.type } : {}),
-          ...(params?.transferId ? { transferId: params.transferId } : {}),
-          ...(params?.status ? { status: params.status } : {}),
-        },
-        timeout: 15000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const useInventoryDocument = (id?: number) => {
-  return useQuery({
-    queryKey: ['inventory-document', id ?? null],
-    queryFn: async () => {
-      const { data } = await api.get(`/inventory/documents/${id}`, { timeout: 15000 });
-      return data;
-    },
-    enabled: Number.isInteger(id) && (id as number) > 0,
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-// Pillow Stock
-export const usePillowStock = () => {
-  return useQuery({
-    queryKey: ['pillow-stock'],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-stock', { timeout: 15000 });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const usePillowStockHistory = (pillowId?: number) => {
-  return useQuery({
-    queryKey: ['pillow-stock-history', pillowId ?? 'all'],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-stock/history', {
-        params: pillowId ? { pillowId } : undefined,
-        headers: { 'x-admin-code': 'admin123456' },
-        timeout: 15000,
-      });
-      return data;
-    },
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const usePillowStockAnalytics = (params?: { from?: string; to?: string; pillowId?: number }) => {
-  return useQuery({
-    queryKey: ['pillow-stock-analytics', params?.from ?? null, params?.to ?? null, params?.pillowId ?? 'all'],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-stock/analytics', {
-        params: {
-          ...(params?.from ? { from: params.from } : {}),
-          ...(params?.to ? { to: params.to } : {}),
-          ...(params?.pillowId ? { pillowId: params.pillowId } : {}),
-        },
-        timeout: 20000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const usePaginatedPillowStockHistory = (params: {
-  page: number;
-  limit: number;
-  pillowId?: number;
-  from?: string;
-  to?: string;
-  search?: string;
-}) => {
-  return useQuery({
-    queryKey: [
-      'pillow-stock-history-query',
-      params.page,
-      params.limit,
-      params.pillowId ?? 'all',
-      params.from ?? null,
-      params.to ?? null,
-      params.search ?? '',
-    ],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-stock/history-query', {
-        params: {
-          page: params.page,
-          limit: params.limit,
-          ...(params.pillowId ? { pillowId: params.pillowId } : {}),
-          ...(params.from ? { from: params.from } : {}),
-          ...(params.to ? { to: params.to } : {}),
-          ...(params.search ? { search: params.search } : {}),
-        },
-        timeout: 20000,
-      });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const useCreatePillow = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (payload: { name: string; price: number; stock: number }) => {
-      const { data } = await api.post('/pillow-stock', { ...payload, password: 'admin123456' });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Accessoire created successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to create pillow');
-    }
-  });
-};
-
-export const usePillowSupply = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ id, quantity, reason }: { id: number; quantity: number; reason: string }) => {
-      const { data } = await api.post(`/pillow-stock/${id}/supply`, { quantity, reason, password: 'admin123456' });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Accessoires stock updated');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to add supply');
-    }
-  });
-};
-
-export const usePillowOutgoing = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ id, quantity, reason }: { id: number; quantity: number; reason: string }) => {
-      const { data } = await api.post(`/pillow-stock/${id}/outgoing`, { quantity, reason, password: 'admin123456' });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Accessoires stock updated');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to remove stock');
-    }
-  });
-};
-
-// Pillow Orders
-export const usePillowOrders = () => {
-  return useQuery({
-    queryKey: ['pillow-orders'],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-orders', { timeout: 15000 });
-      return data;
-    },
-    retry: 1,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
-export const useCreatePillowOrder = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (payload: {
-      customerName: string;
-      phone: string;
-      address: string;
-      city: string;
-      deliveryServiceId: number;
-      items: Array<{ pillowId: number; quantity: number }>;
-    }) => {
-      const { data } = await api.post('/pillow-orders', payload);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Accessoires order created');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to create pillow order');
-    }
-  });
-};
-
-export const useUpdatePillowOrderStatus = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const { data } = await api.patch(`/pillow-orders/${id}/status`, { status });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-stock-history'] });
-      toast.success('Status updated');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to update status');
-    }
-  });
-};
-
-export const useUpdatePillowOrderPaymentStatus = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ id, isPaid }: { id: number; isPaid: boolean }) => {
-      const { data } = await api.patch(`/pillow-orders/${id}/payment`, { isPaid });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pillow-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['pillow-orders-paginated'] });
-      toast.success('Payment status updated');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to update payment status');
-    }
-  });
-};
-
-export interface PillowOrderFilters {
-  page?: number;
-  limit?: number;
-  status?: string;
-  search?: string;
-  deliveryServiceId?: string | number;
-}
-
-export const usePaginatedPillowOrders = (filters: PillowOrderFilters) => {
-  return useQuery({
-    queryKey: ['pillow-orders-paginated', filters],
-    queryFn: async () => {
-      const { data } = await api.get('/pillow-orders', { params: filters, timeout: 15000 });
-      return data;
-    },
-    placeholderData: (previousData) => previousData,
-    ...HEAVY_QUERY_OPTIONS,
-  });
-};
-
 // Users
 export const useUsers = (options?: { enabled?: boolean }) => {
   return useQuery({
@@ -1191,6 +814,7 @@ export interface DashboardStats {
   ordersToday: number;
   deliveredThisMonth: number;
   pendingThisMonth: number;
+  reportedThisMonth?: number;
   inProcessThisMonth: number;
   returnedThisMonth: number;
   returnedThisYear: number;
@@ -1383,6 +1007,7 @@ export type OrderFollowUpItem = {
   pillowOrderId: number | null;
   userId: number | null;
   userName: string;
+  userRole?: string | null;
 };
 
 export type AmanaTrackingData = {
@@ -1457,51 +1082,6 @@ export const useAddOrderFollowUp = () => {
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['order-followups', 'order', vars.orderId] });
-      toast.success('Suivi ajouté');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to add suivi');
-    },
-  });
-};
-
-export const usePillowOrderFollowUps = (
-  pillowOrderId: number | null | undefined,
-  enabled = true
-) => {
-  return useQuery({
-    queryKey: ['order-followups', 'pillow-order', pillowOrderId],
-    enabled: enabled && Boolean(pillowOrderId),
-    queryFn: async () => {
-      const { data } = await api.get(`/order-followups/pillow-order/${pillowOrderId}`, {
-        timeout: 20000,
-      });
-      return data as { pillowOrderId: number; items: OrderFollowUpItem[] };
-    },
-  });
-};
-
-export const useAddPillowOrderFollowUp = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      pillowOrderId,
-      content,
-    }: {
-      pillowOrderId: number;
-      content: string;
-    }) => {
-      const { data } = await api.post(
-        `/order-followups/pillow-order/${pillowOrderId}`,
-        { content },
-        { timeout: 20000 }
-      );
-      return data as OrderFollowUpItem;
-    },
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({
-        queryKey: ['order-followups', 'pillow-order', vars.pillowOrderId],
-      });
       toast.success('Suivi ajouté');
     },
     onError: (error: any) => {

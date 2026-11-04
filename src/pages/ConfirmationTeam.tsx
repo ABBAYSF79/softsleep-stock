@@ -15,6 +15,11 @@ import {
   Plus,
   Pencil,
   Trash2,
+  KeyRound,
+  RefreshCw,
+  Ban,
+  Copy,
+  Share2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -22,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from '../lib/api';
+import { copyText } from "@/utils/clipboard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ConfirmationUser {
@@ -36,6 +42,14 @@ interface ConfirmationUser {
     email: string;
   };
   linkedSalesUserId?: number;
+  hasAccessCode?: boolean;
+  accessCode?: string | null;
+  accessCodeGeneratedAt?: string | null;
+}
+
+interface GeneratedAccessCode {
+  userName: string;
+  code: string;
 }
 
 interface SalesUser {
@@ -57,6 +71,7 @@ const ConfirmationTeam = () => {
   const [editingUser, setEditingUser] = useState<ConfirmationUser | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -172,6 +187,75 @@ const ConfirmationTeam = () => {
     }
   });
 
+  const [generatedCode, setGeneratedCode] = useState<GeneratedAccessCode | null>(null);
+  const portalUrl = `${window.location.origin}/mes-commandes`;
+
+  const generateCodeMutation = useMutation({
+    mutationFn: async (confirmationUser: ConfirmationUser) => {
+      const response = await api.post<{ code: string }>(
+        `/confirmation-users/${confirmationUser.id}/access-code`
+      );
+      return { userName: confirmationUser.name, code: response.data.code };
+    },
+    onSuccess: async (result) => {
+      queryClient.invalidateQueries({ queryKey: ["confirmationUsers"] });
+      setGeneratedCode(result);
+      if (await copyText(result.code)) {
+        toast({ title: "Code copied", description: `New code for ${result.userName} is in your clipboard` });
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate access code",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const revokeCodeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.delete(`/confirmation-users/${id}/access-code`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["confirmationUsers"] });
+      toast({ title: "Success", description: "Access code revoked" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to revoke access code",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleGenerateCode = (confirmationUser: ConfirmationUser) => {
+    if (
+      confirmationUser.hasAccessCode &&
+      !window.confirm(
+        `Regenerate the access code for ${confirmationUser.name}? The current code will stop working immediately.`
+      )
+    ) {
+      return;
+    }
+    generateCodeMutation.mutate(confirmationUser);
+  };
+
+  const handleRevokeCode = (confirmationUser: ConfirmationUser) => {
+    if (window.confirm(`Revoke portal access for ${confirmationUser.name}?`)) {
+      revokeCodeMutation.mutate(confirmationUser.id);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    if (await copyText(text)) {
+      toast({ title: "Copied" });
+    } else {
+      toast({ title: "Copy failed", description: "Select the code and copy it manually", variant: "destructive" });
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     mutation.mutate({
@@ -254,13 +338,14 @@ const ConfirmationTeam = () => {
               <TableHead>Email</TableHead>
               <TableHead>Linked Sales User</TableHead>
               <TableHead>Status</TableHead>
+              {isAdmin && <TableHead>Portal access</TableHead>}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 7 : 6} className="py-10 text-center text-muted-foreground">
                   No confirmation users match your search.
                 </TableCell>
               </TableRow>
@@ -278,6 +363,79 @@ const ConfirmationTeam = () => {
                         {confirmationUser.active ? 'Active' : 'Inactive'}
                       </span>
                     </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {confirmationUser.accessCode ? (
+                            <>
+                              <code
+                                className="select-all rounded bg-muted px-2 py-1 font-mono text-sm tracking-wider"
+                                title={
+                                  confirmationUser.accessCodeGeneratedAt
+                                    ? `Active since ${new Date(confirmationUser.accessCodeGeneratedAt).toLocaleDateString()}`
+                                    : undefined
+                                }
+                              >
+                                {confirmationUser.accessCode}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => copyToClipboard(confirmationUser.accessCode!)}
+                                aria-label={`Copy access code for ${confirmationUser.name}`}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() =>
+                                  setGeneratedCode({
+                                    userName: confirmationUser.name,
+                                    code: confirmationUser.accessCode!,
+                                  })
+                                }
+                                aria-label={`Share access for ${confirmationUser.name}`}
+                              >
+                                <Share2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">No code</span>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1"
+                            disabled={generateCodeMutation.isPending}
+                            onClick={() => handleGenerateCode(confirmationUser)}
+                          >
+                            {confirmationUser.hasAccessCode ? (
+                              <>
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                Regenerate
+                              </>
+                            ) : (
+                              <>
+                                <KeyRound className="h-3.5 w-3.5" />
+                                Generate
+                              </>
+                            )}
+                          </Button>
+                          {confirmationUser.hasAccessCode && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={revokeCodeMutation.isPending}
+                              onClick={() => handleRevokeCode(confirmationUser)}
+                              aria-label={`Revoke access code for ${confirmationUser.name}`}
+                            >
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
@@ -387,6 +545,62 @@ const ConfirmationTeam = () => {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={generatedCode !== null}
+        onOpenChange={(open) => {
+          if (!open) setGeneratedCode(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Access code for {generatedCode?.userName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Send this link and code to the confirmation user. You can copy it again
+              anytime from the Portal access column.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 select-all rounded-md border bg-muted px-4 py-3 text-center font-mono text-2xl tracking-[0.3em]">
+                {generatedCode?.code}
+              </code>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => generatedCode && copyToClipboard(generatedCode.code)}
+                aria-label="Copy code"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label>Portal link</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={portalUrl} />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => copyToClipboard(portalUrl)}
+                  aria-label="Copy link"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() =>
+                generatedCode &&
+                copyToClipboard(`Lien: ${portalUrl}\nCode: ${generatedCode.code}`)
+              }
+            >
+              Copy link + code
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

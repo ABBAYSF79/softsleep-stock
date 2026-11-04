@@ -77,24 +77,35 @@ export function assertCanAccessOrder(
   throw new OrderAccessError('You do not have access to this order');
 }
 
+const isOpen = (status: OrderStatus) =>
+  status === OrderStatus.PENDING || status === OrderStatus.REPORTED;
+
 export function assertLivreurStatusTransition(oldStatus: OrderStatus, newStatus: OrderStatus): void {
-  if (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.DELIVERED) {
-    return;
-  }
-  throw new OrderAccessError('Livreur can only change status from PENDING to DELIVERED');
+  const allowed =
+    (isOpen(oldStatus) && newStatus === OrderStatus.DELIVERED) ||
+    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.REPORTED) ||
+    (oldStatus === OrderStatus.REPORTED && newStatus === OrderStatus.PENDING);
+
+  if (allowed) return;
+
+  throw new OrderAccessError(
+    'Livreur can only change PENDING/REPORTED→DELIVERED or switch between PENDING and REPORTED'
+  );
 }
 
 export function assertSuiviStatusTransition(oldStatus: OrderStatus, newStatus: OrderStatus): void {
   const allowed =
-    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.IN_PROCESS) ||
-    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.DELIVERED) ||
+    (isOpen(oldStatus) && newStatus === OrderStatus.IN_PROCESS) ||
+    (isOpen(oldStatus) && newStatus === OrderStatus.DELIVERED) ||
+    (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.REPORTED) ||
+    (oldStatus === OrderStatus.REPORTED && newStatus === OrderStatus.PENDING) ||
     (oldStatus === OrderStatus.IN_PROCESS && newStatus === OrderStatus.DELIVERED) ||
     (oldStatus === OrderStatus.IN_PROCESS && newStatus === OrderStatus.RETURNED);
 
   if (allowed) return;
 
   throw new OrderAccessError(
-    'Suivi can change PENDING→IN_PROCESS/DELIVERED or IN_PROCESS→DELIVERED/RETURNED'
+    'Suivi can change PENDING/REPORTED→IN_PROCESS/DELIVERED, PENDING↔REPORTED or IN_PROCESS→DELIVERED/RETURNED'
   );
 }
 

@@ -124,6 +124,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       IN_PROCESS: 0,
       DELIVERED: 0,
       RETURNED: 0,
+      REPORTED: 0,
     };
     for (const group of statusGroups) {
       const key = group.status as keyof typeof statusCounts;
@@ -298,6 +299,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
         pendingThisMonth: statusCounts.PENDING,
         inProcessThisMonth: statusCounts.IN_PROCESS,
         returnedThisMonth: statusCounts.RETURNED,
+        reportedThisMonth: statusCounts.REPORTED,
         returnedThisYear,
         paidDeliveredThisMonth: paidDeliveredCount,
         unpaidDeliveredThisMonth: unpaidDeliveredCount,

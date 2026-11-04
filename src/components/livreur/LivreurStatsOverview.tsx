@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, CheckCircle2, Clock, Package, RotateCcw, TrendingUp } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, CheckCircle2, Clock, Package, RotateCcw, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { LivreurStats } from "@/hooks/useApi";
 
@@ -82,6 +82,15 @@ export const LivreurStatsOverview = ({
       icon: RotateCcw,
       color: "text-red-700 bg-red-50 border-red-200",
       filter: "RETURNED",
+    },
+    {
+      key: "allReported",
+      label: "Reportées",
+      sub: `toutes périodes · ${stats?.reportedMonth ?? 0} ce mois`,
+      value: stats?.allReported ?? 0,
+      icon: CalendarClock,
+      color: "col-span-2 text-orange-700 bg-orange-50 border-orange-200",
+      filter: "REPORTED",
     },
   ];
 

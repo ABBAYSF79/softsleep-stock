@@ -40,7 +40,11 @@ import {
 } from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useRowSelection } from "@/hooks/useRowSelection";
-import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
+import { ORDER_STATUSES, formatPrice, formatReportDate, formatVariantDetails, getProductName } from "@/utils/order-utils";
+import { ReportedUntilChip } from "@/components/orders/ReportDateFields";
+
+const REPORT_DUE_FILTER = "REPORTED_DUE";
+import { cn } from "@/lib/utils";
 import { exportOrdersToExcel } from "@/utils/excel-export";
 import { exportSelectedOrdersToPdf } from "@/utils/order-management-pdf";
 import { OrderFollowUpSheet } from "@/components/orders/OrderFollowUpSheet";
@@ -49,10 +53,13 @@ import { OrderManagementToolbar } from "@/components/orders/OrderManagementToolb
 import { OrderQuickStatusControl } from "@/components/orders/OrderQuickStatusControl";
 import Barcode from "react-barcode";
 import { toast } from "sonner";
-import { BadgeCheck, Barcode as BarcodeIcon, Copy, CopyPlus, Eye, FileSpreadsheet, FileText, History, MessageCircle, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
+import { BadgeCheck, Barcode as BarcodeIcon, CalendarClock, Copy, CopyPlus, Eye, FileSpreadsheet, FileText, History, MessageCircle, MessageSquare, MoreHorizontal, Pencil, Printer, Trash2, Truck } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
 import { canTrackAmanaOrder } from "@/utils/amanaTracking";
+
+/** Amana tracking needs a working proxy on the backend — set to true to show the icon again. */
+const SHOW_AMANA_TRACKING = false;
 
 const OrderManagement = () => {
   const navigate = useNavigate();
@@ -176,7 +183,9 @@ const OrderManagement = () => {
     () => ({
       page: currentPage,
       limit: itemsPerPage,
-      status: statusFilter,
+      ...(statusFilter === REPORT_DUE_FILTER
+        ? { status: "REPORTED", reportDue: "true" }
+        : { status: statusFilter }),
       search: debouncedSearch,
       ...(isAdmin && salesmanIdFilter !== "all" ? { salesmanId: salesmanIdFilter } : {}),
       ...(deliveryServiceIdFilter !== "all" ? { deliveryServiceId: deliveryServiceIdFilter } : {}),
@@ -231,11 +240,22 @@ const OrderManagement = () => {
   }, []);
 
   const handleQuickStatusChange = useCallback(
-    async (args: { id: number; status: string; trackingCode?: string }) => {
+    async (args: {
+      id: number;
+      status: string;
+      trackingCode?: string;
+      reportedUntil?: string;
+      reportReason?: string;
+    }) => {
       await updateOrderStatus.mutateAsync(args);
-      toast.success(`Order #${args.id} → ${args.status}`);
+      toast.success(
+        args.reportedUntil
+          ? `Order #${args.id} reportée au ${formatReportDate(`${args.reportedUntil}T12:00:00Z`)}`
+          : `Order #${args.id} → ${args.status}`
+      );
+      refetch();
     },
-    [updateOrderStatus]
+    [updateOrderStatus, refetch]
   );
 
   const handleDialogClose = (open: boolean) => {
@@ -367,18 +387,33 @@ const OrderManagement = () => {
     clearSelection();
   }, [selectedOrders, buildOrderCopyText, copyToClipboard, clearSelection]);
 
-  const handleBulkExcel = useCallback(async () => {
+  const handleBulkExcelAmana = useCallback(async () => {
     if (!selectedOrders.length) return;
     try {
       await exportOrdersToExcel(
         selectedOrders,
-        `orders-selected-${new Date().toISOString().slice(0, 10)}.xlsx`,
-        'management'
+        `depot-amana-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'amana'
       );
-      toast.success("Excel exported");
+      toast.success("Excel Amana exported");
       clearSelection();
     } catch {
-      toast.error("Failed to export Excel");
+      toast.error("Failed to export Excel Amana");
+    }
+  }, [selectedOrders, clearSelection]);
+
+  const handleBulkExcelSoftsleep = useCallback(async () => {
+    if (!selectedOrders.length) return;
+    try {
+      await exportOrdersToExcel(
+        selectedOrders,
+        `excel-softsleep-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'softsleep'
+      );
+      toast.success("Excel SoftSleep exported");
+      clearSelection();
+    } catch {
+      toast.error("Failed to export Excel SoftSleep");
     }
   }, [selectedOrders, clearSelection]);
 
@@ -518,6 +553,45 @@ const OrderManagement = () => {
           activeFiltersCount={activeFiltersCount}
           onClearFilters={clearFilters}
         />
+
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]" role="group" aria-label="Filtre rapide par statut">
+          {[{ value: "all", label: "Tous", color: "" }, ...Object.values(ORDER_STATUSES)].map((s) => {
+            const active = statusFilter === s.value;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setStatusFilter(s.value)}
+                aria-pressed={active}
+                className={cn(
+                  "h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
+                  active
+                    ? s.value === "all"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : cn(s.color, "border-transparent font-semibold ring-1 ring-inset ring-black/10")
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setStatusFilter(REPORT_DUE_FILTER)}
+            aria-pressed={statusFilter === REPORT_DUE_FILTER}
+            title="Commandes reportées dont la date est aujourd'hui ou dépassée"
+            className={cn(
+              "inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors",
+              statusFilter === REPORT_DUE_FILTER
+                ? "border-transparent bg-red-100 font-semibold text-red-800 ring-1 ring-inset ring-black/10"
+                : "border-red-200 bg-white text-red-700 hover:bg-red-50"
+            )}
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            Reportés à relancer
+          </button>
+        </div>
 
         {/* Orders table */}
         <Card className="overflow-hidden border-gray-200 shadow-sm">
@@ -786,7 +860,7 @@ const OrderManagement = () => {
             Clear selection
           </Button>
         </div>
-        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-[repeat(3,minmax(120px,1fr))]">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2 lg:grid-cols-4">
           <Button
             type="button"
             size="sm"
@@ -800,11 +874,21 @@ const OrderManagement = () => {
             type="button"
             size="sm"
             variant="outline"
-            onClick={handleBulkExcel}
+            onClick={handleBulkExcelAmana}
             disabled={selectedOrders.length === 0}
           >
             <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Excel
+            Excel Amana
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleBulkExcelSoftsleep}
+            disabled={selectedOrders.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Excel SoftSleep
           </Button>
           <Button
             type="button"
@@ -851,6 +935,8 @@ type OrderRowProps = {
     id: number;
     status: string;
     trackingCode?: string;
+    reportedUntil?: string;
+    reportReason?: string;
   }) => void | Promise<void>;
 };
 
@@ -956,6 +1042,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
           />
         </div>
       </div>
+      <ReportedUntilChip order={order} showReason className="mt-1.5 text-right" />
 
       <div className="mt-3 space-y-2 rounded-md bg-gray-50 px-2.5 py-2">
         <p className="text-xs text-muted-foreground">Product</p>
@@ -1049,7 +1136,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
           >
             <History className="h-4 w-4" />
           </Button>
-          {canTrackAmanaOrder(order) && (
+          {SHOW_AMANA_TRACKING && canTrackAmanaOrder(order) && (
             <Button
               variant="ghost"
               size="icon"
@@ -1090,7 +1177,7 @@ const OrderMobileCard = memo(function OrderMobileCard({
                   WhatsApp client
                 </DropdownMenuItem>
               )}
-              {isSales && (
+              {(isSales || isAdmin) && (
                 <DropdownMenuItem onClick={() => onNavigateQuickEdit(Number(order.id))}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Quick edit
@@ -1225,7 +1312,7 @@ const OrderRow = memo(function OrderRow({
         </div>
       </TableCell>
       <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-        <div className="whitespace-nowrap">
+        <div className="space-y-1 whitespace-nowrap">
           <OrderQuickStatusControl
             order={order}
             isAdmin={isAdmin}
@@ -1235,6 +1322,21 @@ const OrderRow = memo(function OrderRow({
             disabled={statusBusy}
             onConfirmStatus={onQuickStatusChange}
           />
+          <ReportedUntilChip order={order} />
+          {(order.inProcessAt || order.deliveredAt) && (
+            <div className="space-y-0.5 text-[10px] leading-tight text-muted-foreground">
+              {order.inProcessAt && (
+                <div title="In process at">
+                  IP {format(new Date(order.inProcessAt), "dd/MM HH:mm")}
+                </div>
+              )}
+              {order.deliveredAt && (
+                <div title="Delivered at">
+                  DL {format(new Date(order.deliveredAt), "dd/MM HH:mm")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-muted-foreground">
@@ -1297,7 +1399,7 @@ const OrderRow = memo(function OrderRow({
           >
             <History className="h-3.5 w-3.5" />
           </Button>
-          {canTrackAmanaOrder(order) && (
+          {SHOW_AMANA_TRACKING && canTrackAmanaOrder(order) && (
             <Button
               variant="ghost"
               size="icon"
@@ -1338,7 +1440,7 @@ const OrderRow = memo(function OrderRow({
                   WhatsApp client
                 </DropdownMenuItem>
               )}
-              {isSales && (
+              {(isSales || isAdmin) && (
                 <DropdownMenuItem onClick={() => onNavigateQuickEdit(Number(order.id))}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Quick edit

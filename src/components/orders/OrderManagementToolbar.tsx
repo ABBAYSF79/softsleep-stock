@@ -180,6 +180,8 @@ export function OrderManagementToolbar({
               <SelectContent>
                 <SelectItem value="all">All status</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="REPORTED">Reporté</SelectItem>
+                <SelectItem value="REPORTED_DUE">Reportés à relancer</SelectItem>
                 <SelectItem value="IN_PROCESS">In Process</SelectItem>
                 <SelectItem value="DELIVERED">Delivered</SelectItem>
                 <SelectItem value="RETURNED">Returned</SelectItem>

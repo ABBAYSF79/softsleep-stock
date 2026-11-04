@@ -26,7 +26,14 @@ import { MapPin, Trash2, AlertTriangle, MessageSquare, Car } from "lucide-react"
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode } from "@/utils/order-utils";
+import { ORDER_STATUSES, formatPrice, generateAmanaTrackingCode, isOpenOrderStatus, reportDateYmd } from "@/utils/order-utils";
+import {
+  ReportDateFields,
+  ReportedUntilChip,
+  emptyReportDate,
+  isReportDateValid,
+  type ReportDateValue,
+} from "@/components/orders/ReportDateFields";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -66,6 +73,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
   const [selectedConfirmationUser, setSelectedConfirmationUser] = useState<string>("none");
   const [note, setNote] = useState<string>("");
   const [trackingCode, setTrackingCode] = useState<string>("");
+  const [report, setReport] = useState<ReportDateValue>(emptyReportDate);
   const [deliveryChanged, setDeliveryChanged] = useState(false);
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
   
@@ -123,6 +131,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
       setSelectedConfirmationUser(order.confirmationUserId?.toString() || "none");
       setNote(order.note || "");
       setTrackingCode(order.trackingCode || "");
+      setReport({ date: reportDateYmd(order.reportedUntil) ?? "", reason: order.reportReason ?? "" });
       setManualTotal(order.totalAmount || null);
     } else {
       setStatus("PENDING");
@@ -295,7 +304,21 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
           return;
         }
       }
-      if (status === originalStatus && note === order?.note && trackingCode === order?.trackingCode) {
+      const reportChanged =
+        status === "REPORTED" &&
+        (originalStatus !== "REPORTED" ||
+          report.date !== (reportDateYmd(order?.reportedUntil) ?? "") ||
+          report.reason !== (order?.reportReason ?? ""));
+      if (reportChanged && !isReportDateValid(report)) {
+        toast.error("Choisissez une date de report (aujourd'hui ou plus tard)");
+        return;
+      }
+      if (
+        status === originalStatus &&
+        note === order?.note &&
+        trackingCode === order?.trackingCode &&
+        !reportChanged
+      ) {
         toast.info("No changes were made");
         onOpenChange(false);
         return;
@@ -306,7 +329,8 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
           id: order!.id,
           status: status,
           note: note || undefined,
-          trackingCode: trackingCode || undefined
+          trackingCode: trackingCode || undefined,
+          ...(reportChanged ? { reportedUntil: report.date, reportReason: report.reason.trim() } : {}),
         };
 
         // Only include status in the update if it has changed
@@ -444,7 +468,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                         <SelectContent>
                           {Object.values(ORDER_STATUSES)
                             .filter((s) => {
-                              if (order?.status === "PENDING" && s.value === "RETURNED") {
+                              if (isOpenOrderStatus(order?.status) && s.value === "RETURNED") {
                                 return false;
                               }
                               return true;
@@ -457,6 +481,12 @@ export const OrderDialog = ({ open, onOpenChange, order, onStatusUpdate }: Order
                         </SelectContent>
                       </Select>
                     )}
+                    {isViewing && status === "REPORTED" &&
+                      (isAdmin ? (
+                        <ReportDateFields value={report} onChange={setReport} idPrefix="legacy-order-report" />
+                      ) : (
+                        <ReportedUntilChip order={order} showReason />
+                      ))}
                   </div>
 
                   <div className="space-y-3">

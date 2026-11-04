@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
-import { formatPrice, formatVariantDetails, getProductName } from "@/utils/order-utils";
-import { BadgeCheck, Barcode, MapPin, MessageSquare, Phone, Printer, UserCheck } from "lucide-react";
+import { LivreurFollowUpSection } from "@/components/livreur/LivreurFollowUpSection";
+import { ReportedUntilChip } from "@/components/orders/ReportDateFields";
+import { formatPrice, formatVariantDetails, getProductName, isOpenOrderStatus } from "@/utils/order-utils";
+import { BadgeCheck, CalendarClock, Barcode, MapPin, MessageSquare, Phone, Printer, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 
 interface LivreurOrderSheetProps {
@@ -22,8 +24,13 @@ interface LivreurOrderSheetProps {
   onOpenGuarantee: (order: any) => void;
   onOpenTracking: (code: string) => void;
   onMarkDelivered: (order: any) => void;
+  /** Open the report-date form (set or change the date). */
+  onReport?: (order: any) => void;
+  /** Move a REPORTED order back to PENDING. */
+  onUnreport?: (order: any) => unknown;
   onSaveNote: (orderId: number, note: string) => Promise<void>;
   isMarkingDelivered?: boolean;
+  isTogglingReported?: boolean;
   isSavingNote?: boolean;
 }
 
@@ -36,8 +43,11 @@ export const LivreurOrderSheet = ({
   onOpenGuarantee,
   onOpenTracking,
   onMarkDelivered,
+  onReport,
+  onUnreport,
   onSaveNote,
   isMarkingDelivered,
+  isTogglingReported,
   isSavingNote,
 }: LivreurOrderSheetProps) => {
   const [note, setNote] = useState("");
@@ -78,6 +88,7 @@ export const LivreurOrderSheet = ({
             <p className="mt-2 text-xs text-muted-foreground">
               {format(new Date(order.createdAt), "dd MMM yyyy · HH:mm")}
             </p>
+            <ReportedUntilChip order={order} showReason className="mt-2" />
           </div>
 
           <div className="space-y-3 text-sm">
@@ -142,6 +153,8 @@ export const LivreurOrderSheet = ({
             </div>
           )}
 
+          <LivreurFollowUpSection orderId={order.id} enabled={open} />
+
           <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
             <Label htmlFor="livreur-note" className="flex items-center gap-1.5 text-sm font-semibold text-amber-950">
               <MessageSquare className="h-4 w-4" />
@@ -200,15 +213,57 @@ export const LivreurOrderSheet = ({
             </Button>
           </div>
 
-          {order.status === "PENDING" && (
-            <Button
-              type="button"
-              className="h-12 w-full bg-matles-600 text-base font-semibold hover:bg-matles-700"
-              disabled={isMarkingDelivered}
-              onClick={() => onMarkDelivered(order)}
-            >
-              {isMarkingDelivered ? "En cours..." : "Marquer comme livré"}
-            </Button>
+          {isOpenOrderStatus(order.status) && (
+            <div className="space-y-2">
+              {order.status === "REPORTED" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {onReport && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 border-orange-300 bg-orange-50 font-semibold text-orange-800 hover:bg-orange-100"
+                      disabled={isTogglingReported || isMarkingDelivered}
+                      onClick={() => onReport(order)}
+                    >
+                      <CalendarClock className="mr-1.5 h-4 w-4" />
+                      Modifier la date
+                    </Button>
+                  )}
+                  {onUnreport && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 font-semibold"
+                      disabled={isTogglingReported || isMarkingDelivered}
+                      onClick={() => onUnreport(order)}
+                    >
+                      {isTogglingReported ? "En cours..." : "Remettre en attente"}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                onReport && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 w-full border-orange-300 bg-orange-50 text-base font-semibold text-orange-800 hover:bg-orange-100"
+                    disabled={isTogglingReported || isMarkingDelivered}
+                    onClick={() => onReport(order)}
+                  >
+                    <CalendarClock className="mr-2 h-5 w-5" />
+                    Reporter (client)
+                  </Button>
+                )
+              )}
+              <Button
+                type="button"
+                className="h-12 w-full bg-matles-600 text-base font-semibold hover:bg-matles-700"
+                disabled={isMarkingDelivered || isTogglingReported}
+                onClick={() => onMarkDelivered(order)}
+              >
+                {isMarkingDelivered ? "En cours..." : "Marquer comme livré"}
+              </Button>
+            </div>
           )}
         </div>
       </SheetContent>

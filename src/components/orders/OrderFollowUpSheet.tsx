@@ -78,6 +78,11 @@ export function FollowUpTimeline({
                 <p className="truncate text-xs font-medium text-slate-500">
                   {item.userName}
                 </p>
+                {item.userRole === "LIVREUR" && (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                    Livreur
+                  </span>
+                )}
               </div>
               <p className="whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-slate-900">
                 {item.content}

@@ -25,6 +25,14 @@ import { OrderAccessoryInventory } from '../services/OrderAccessoryInventory';
 import { reservationErrorToHttp, ReservationDomainError } from '../services/ReservationService';
 import { cutoverErrorToHttp, CutoverFreezeService, CutoverDomainError } from '../services/CutoverFreezeService';
 import { LegacyOrderTransitionService } from '../services/LegacyOrderTransitionService';
+import {
+  ReportDateError,
+  endOfBusinessToday,
+  isOpenOrderStatus,
+  isStockDeductedStatus,
+  resolveReportPatch,
+  type ReportPatch,
+} from '../utils/order-status';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -49,6 +57,28 @@ function parsePositiveInt(value: string | undefined): number | null {
   if (!value || value === 'all') return null;
   const n = parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Timestamps for status milestones — keep first inProcessAt, refresh deliveredAt on each delivery. */
+function orderStatusTimestampPatch(
+  previousStatus: OrderStatus | string,
+  nextStatus: OrderStatus | string | undefined | null,
+  current: { inProcessAt?: Date | null; deliveredAt?: Date | null }
+): { inProcessAt?: Date; deliveredAt?: Date } {
+  if (!nextStatus || nextStatus === previousStatus) return {};
+  const now = new Date();
+  const patch: { inProcessAt?: Date; deliveredAt?: Date } = {};
+  if (nextStatus === OrderStatus.IN_PROCESS && !current.inProcessAt) {
+    patch.inProcessAt = now;
+  }
+  if (nextStatus === OrderStatus.DELIVERED) {
+    patch.deliveredAt = now;
+    // If delivered without ever recording IN_PROCESS, stamp both
+    if (!current.inProcessAt) {
+      patch.inProcessAt = now;
+    }
+  }
+  return patch;
 }
 
 /**
@@ -230,15 +260,18 @@ router.get('/livreur-stats', authMiddleware, async (req, res) => {
       inProcessMonth,
       deliveredMonth,
       returnedMonth,
+      reportedMonth,
       todayTotal,
       todayDelivered,
       allPending,
+      allReported,
     ] = await Promise.all([
       prisma.order.count({ where: monthWhere }),
       prisma.order.count({ where: { ...monthWhere, status: OrderStatus.PENDING } }),
       prisma.order.count({ where: { ...monthWhere, status: OrderStatus.IN_PROCESS } }),
       prisma.order.count({ where: { ...monthWhere, status: OrderStatus.DELIVERED } }),
       prisma.order.count({ where: { ...monthWhere, status: OrderStatus.RETURNED } }),
+      prisma.order.count({ where: { ...monthWhere, status: OrderStatus.REPORTED } }),
       prisma.order.count({
         where: { ...baseWhere, createdAt: { gte: today, lt: tomorrow } },
       }),
@@ -250,6 +283,7 @@ router.get('/livreur-stats', authMiddleware, async (req, res) => {
         },
       }),
       prisma.order.count({ where: { ...baseWhere, status: OrderStatus.PENDING } }),
+      prisma.order.count({ where: { ...baseWhere, status: OrderStatus.REPORTED } }),
     ]);
 
     const deliveryRate = totalMonth > 0 ? Math.round((deliveredMonth / totalMonth) * 100) : 0;
@@ -261,9 +295,11 @@ router.get('/livreur-stats', authMiddleware, async (req, res) => {
       inProcessMonth,
       deliveredMonth,
       returnedMonth,
+      reportedMonth,
       todayTotal,
       todayDelivered,
       allPending,
+      allReported,
       deliveryRate,
     });
   } catch (error) {
@@ -315,6 +351,15 @@ router.get('/', authMiddleware, async (req, res) => {
       } else if (list.length > 1) {
         where.status = { in: list };
       }
+    }
+
+    // Reported orders whose report date has arrived (or was never set)
+    if (firstQueryString(req.query.reportDue) === 'true') {
+      where.status = OrderStatus.REPORTED;
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        { OR: [{ reportedUntil: null }, { reportedUntil: { lte: endOfBusinessToday() } }] },
+      ];
     }
 
     if (search) {
@@ -589,12 +634,10 @@ router.post('/', authMiddleware, async (req, res) => {
     console.log('Note:', note);
     console.log('Tracking Code:', trackingCode);
     console.log('Pillow items:', pillowItems);
-    
     let calculatedTotal = new Prisma.Decimal(0);
     let calculatedCommission = new Prisma.Decimal(0);
     const orderItems: any[] = [];
     const orderPillowItems: any[] = [];
-    
     // Get commission settings
     const commissionSettings = await prisma.commissionSettings.findFirst();
     
@@ -669,7 +712,6 @@ router.post('/', authMiddleware, async (req, res) => {
         });
       }
     }
-    
     const hasManualTotal = totalAmount !== undefined && totalAmount !== null && String(totalAmount).trim() !== '';
 
     const parsedDeliveryServiceId = parseInt(deliveryServiceId);
@@ -1096,7 +1138,7 @@ router.post('/:id/duplicate', authMiddleware, async (req, res) => {
 router.patch('/:id/status', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status: newStatus, note, livreurNote, trackingCode } = req.body;
+    const { status: newStatus, note, livreurNote, trackingCode, reportedUntil, reportReason } = req.body;
     
     console.log(`Updating order ${id} to status ${newStatus}`);
     console.log('Note:', note);
@@ -1144,6 +1186,17 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       throw error;
     }
 
+    let reportPatch: ReportPatch;
+    try {
+      reportPatch = resolveReportPatch(oldStatus, newStatus, { reportedUntil, reportReason });
+    } catch (error) {
+      if (error instanceof ReportDateError) {
+        return res.status(400).json({ error: error.message });
+      }
+      throw error;
+    }
+    const isReportChange = Object.keys(reportPatch.data).length > 0;
+
     const isLivreur = req.user!.role === UserRole.LIVREUR;
     const livreurNoteInput = livreurNote !== undefined ? livreurNote : note;
 
@@ -1156,7 +1209,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       const isNoteChange =
         livreurNoteInput !== undefined && livreurNoteInput !== (currentOrder.livreurNote ?? '');
 
-      if (!isStatusChange && !isNoteChange) {
+      if (!isStatusChange && !isNoteChange && !isReportChange) {
         return res.status(400).json({ error: 'No changes to save' });
       }
 
@@ -1178,7 +1231,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       const isTrackingChange =
         trackingCode !== undefined && trackingCode !== (currentOrder.trackingCode ?? '');
 
-      if (!isStatusChange && !isNoteChange && !isTrackingChange) {
+      if (!isStatusChange && !isNoteChange && !isTrackingChange && !isReportChange) {
         return res.status(400).json({ error: 'No changes to save' });
       }
 
@@ -1203,15 +1256,15 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       }
     }
 
-    // PENDING never reserved stock — RETURNED is invalid from PENDING
+    // PENDING / REPORTED never reserved stock — RETURNED is invalid from them
     if (
       newStatus &&
       newStatus !== oldStatus &&
-      oldStatus === OrderStatus.PENDING &&
+      isOpenOrderStatus(oldStatus) &&
       newStatus === OrderStatus.RETURNED
     ) {
       return res.status(400).json({
-        error: 'Cannot set RETURNED from PENDING — stock was never reserved',
+        error: `Cannot set RETURNED from ${oldStatus} — stock was never reserved`,
       });
     }
     
@@ -1223,12 +1276,13 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       : note === undefined || note === (currentOrder.note ?? '');
     const trackingUnchanged = trackingCode === undefined || trackingCode === currentOrder.trackingCode;
 
-    if (statusUnchanged && noteUnchanged && trackingUnchanged) {
+    if (statusUnchanged && noteUnchanged && trackingUnchanged && !isReportChange) {
       return res.json(currentOrder);
     }
     
     // Update order status and note
     const updatedOrder = await prisma.$transaction(async (tx) => {
+      const statusTimestamps = orderStatusTimestampPatch(oldStatus, newStatus, currentOrder);
       // Update order status and note
       const order = await tx.order.update({
         where: { id: parseInt(id) },
@@ -1236,7 +1290,9 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
           ...(newStatus && { status: newStatus }),
           ...(livreurNoteInput !== undefined && isLivreur ? { livreurNote: livreurNoteInput } : {}),
           ...(note !== undefined && !isLivreur ? { note } : {}),
-          ...(trackingCode !== undefined && { trackingCode })
+          ...(trackingCode !== undefined && { trackingCode }),
+          ...statusTimestamps,
+          ...reportPatch.data,
         },
         include: {
           orderItems: {
@@ -1312,7 +1368,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
       // Only handle stock updates if status has changed
       if (newStatus && oldStatus !== newStatus) {
         // Handle stock updates based on status change
-        if (oldStatus === 'PENDING' && (newStatus === 'IN_PROCESS' || newStatus === 'DELIVERED')) {
+        if (isOpenOrderStatus(oldStatus) && isStockDeductedStatus(newStatus)) {
           // Decrease stock when order moves to IN_PROCESS or DELIVERED
           for (const item of order.orderItems) {
             const previousStock = item.variant.stock;
@@ -1346,8 +1402,8 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
               'OUTGOING'
             );
           }
-        } else if ((oldStatus === 'IN_PROCESS' || oldStatus === 'DELIVERED') && newStatus === 'PENDING') {
-          // Increase stock (Restore) when order moves back to PENDING (Cancellation/Hold)
+        } else if (isStockDeductedStatus(oldStatus) && isOpenOrderStatus(newStatus)) {
+          // Increase stock (Restore) when order moves back to PENDING / REPORTED (Cancellation/Hold)
           for (const item of order.orderItems) {
             const previousStock = item.variant.stock;
             const newStock = previousStock + item.quantity;
@@ -1364,7 +1420,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
                 variantId: item.variantId,
                 quantity: item.quantity,
                 type: 'RETURN', // Using RETURN type as it's returning to stock
-                reason: `Order #${order.id} reverted to PENDING from ${oldStatus}`,
+                reason: `Order #${order.id} reverted to ${newStatus} from ${oldStatus}`,
                 previousStock,
                 newStock,
                 userId: req.user!.id
@@ -1376,7 +1432,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
             await applyPillowStockChange(
               pi.pillowId,
               pi.quantity,
-              `Mattress order #${order.id} reverted to PENDING from ${oldStatus}`,
+              `Mattress order #${order.id} reverted to ${newStatus} from ${oldStatus}`,
               'ADJUSTMENT'
             );
           }
@@ -1461,6 +1517,12 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
             hasAccessoryLines: (order.pillowItems || []).length > 0,
           });
         }
+      }
+
+      if (reportPatch.followUp) {
+        await tx.orderFollowUp.create({
+          data: { orderId: order.id, content: reportPatch.followUp, userId: req.user!.id },
+        });
       }
 
       return order;
@@ -1724,6 +1786,7 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       status,
       trackingCode,
       note,
+      confirmationUserId,
       locationId: locationIdRaw,
     } = req.body;
     
@@ -1751,6 +1814,44 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
 
     if (!currentOrder) {
       return res.status(404).json({ error: 'Order not found' });
+    }
+
+    let reportPatch: ReportPatch;
+    try {
+      reportPatch = resolveReportPatch(currentOrder.status, status, {
+        reportedUntil: req.body.reportedUntil,
+        reportReason: req.body.reportReason,
+      });
+    } catch (error) {
+      if (error instanceof ReportDateError) {
+        return res.status(400).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    // Resolve confirmation user (admin may set / clear via Advanced Edit)
+    let resolvedConfirmationUserId: number | null = currentOrder.confirmationUserId;
+    if (confirmationUserId !== undefined) {
+      if (
+        confirmationUserId === null ||
+        confirmationUserId === '' ||
+        confirmationUserId === 'none'
+      ) {
+        resolvedConfirmationUserId = null;
+      } else {
+        const parsedCuId = parseInt(String(confirmationUserId), 10);
+        if (!Number.isInteger(parsedCuId) || parsedCuId <= 0) {
+          return res.status(400).json({ error: 'Invalid confirmation user id' });
+        }
+        const confirmationUser = await prisma.confirmationUser.findUnique({
+          where: { id: parsedCuId },
+          select: { id: true },
+        });
+        if (!confirmationUser) {
+          return res.status(400).json({ error: 'Confirmation user not found' });
+        }
+        resolvedConfirmationUserId = parsedCuId;
+      }
     }
 
     // Transaction to handle everything safely
@@ -1878,6 +1979,11 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
         ? new Prisma.Decimal(totalAmount)
         : calculatedTotal.add(calculatedPillowTotal);
       const finalStatus = status || currentOrder.status;
+      const statusTimestamps = orderStatusTimestampPatch(
+        currentOrder.status,
+        finalStatus,
+        currentOrder
+      );
 
       // TASK 8: location is fulfillment metadata only — never moves InventoryBalance / Transfer.
       // Allow change only when stock has not been deducted for this order (PENDING / RETURNED).
@@ -1902,12 +2008,15 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
           address,
           city,
           deliveryServiceId: deliveryServiceId ? parseInt(deliveryServiceId) : null,
+          confirmationUserId: resolvedConfirmationUserId,
           totalAmount: finalTotal,
           commission: calculatedCommission,
           status: finalStatus,
           trackingCode,
           note,
           locationId: nextLocationId,
+          ...statusTimestamps,
+          ...reportPatch.data,
           orderItems: {
             create: newOrderItems
           },
@@ -1920,6 +2029,17 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
             : {})
         },
         include: {
+          confirmationUser: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+              linkedSalesUser: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+          },
           orderItems: {
              include: {
                 variant: {
@@ -1991,6 +2111,12 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
         });
       }
 
+      if (reportPatch.followUp) {
+        await tx.orderFollowUp.create({
+          data: { orderId, content: reportPatch.followUp, userId: req.user!.id },
+        });
+      }
+
       return order;
     });
 
@@ -2036,7 +2162,7 @@ router.put('/:id/quick', authMiddleware, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { customerName, phone, address, city, items, pillowItems, note } = req.body;
+    const { customerName, phone, address, city, items, pillowItems, note, totalAmount } = req.body;
 
     if (!customerName || String(customerName).trim() === '') {
       return res.status(400).json({ error: 'Customer name is required' });
@@ -2046,6 +2172,15 @@ router.put('/:id/quick', authMiddleware, async (req, res) => {
     }
     if (items.length === 0 && !(Array.isArray(pillowItems) && pillowItems.length > 0)) {
       return res.status(400).json({ error: 'Order must have at least one item or supplement' });
+    }
+
+    const hasManualTotal =
+      totalAmount !== undefined && totalAmount !== null && String(totalAmount).trim() !== '';
+    if (hasManualTotal) {
+      const parsedTotal = Number(totalAmount);
+      if (!Number.isFinite(parsedTotal) || parsedTotal < 0) {
+        return res.status(400).json({ error: 'Invalid total amount' });
+      }
     }
 
     const orderId = parseInt(id, 10);
@@ -2071,6 +2206,43 @@ router.put('/:id/quick', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: error.message });
       }
       throw error;
+    }
+
+    // Products, supplements and price can only change while the order is PENDING / REPORTED.
+    if (!isOpenOrderStatus(currentOrder.status)) {
+      const infoOnlyOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          customerName: String(customerName).trim(),
+          phone: phone != null ? String(phone) : currentOrder.phone,
+          address: address != null ? String(address) : currentOrder.address,
+          city: city != null ? String(city) : currentOrder.city,
+          note: note != null ? String(note) : currentOrder.note,
+        },
+        include: {
+          orderItems: {
+            include: {
+              variant: { include: { product: true, size: true } },
+            },
+          },
+          pillowItems: { include: { pillow: true } },
+          location: { select: orderLocationSelect },
+        },
+      });
+
+      await prisma.activity.create({
+        data: {
+          userId: user.id,
+          type: 'ORDER_UPDATE',
+          description: `Quick edit performed on Order #${orderId}`,
+          details: JSON.stringify({
+            orderId,
+            changes: `Quick edit (customer, note only — order is ${currentOrder.status})`,
+          }),
+        },
+      });
+
+      return res.json(infoOnlyOrder);
     }
 
     const updatedOrder = await prisma.$transaction(async (tx) => {
@@ -2117,7 +2289,6 @@ router.put('/:id/quick', authMiddleware, async (req, res) => {
 
       await tx.orderItem.deleteMany({ where: { orderId } });
       await tx.orderPillowItem.deleteMany({ where: { orderId } });
-
       const newOrderItems: Array<{ variantId: number; quantity: number; price: Prisma.Decimal }> = [];
       let calculatedTotal = new Prisma.Decimal(0);
       let calculatedPillowTotal = new Prisma.Decimal(0);
@@ -2176,7 +2347,9 @@ router.put('/:id/quick', authMiddleware, async (req, res) => {
         }
       }
 
-      const finalTotal = calculatedTotal.add(calculatedPillowTotal);
+      const finalTotal = hasManualTotal
+        ? new Prisma.Decimal(totalAmount)
+        : calculatedTotal.add(calculatedPillowTotal);
       const finalStatus = currentOrder.status;
 
       const order = await tx.order.update({
@@ -2361,8 +2534,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
               userId: req.user!.id
             }
           });
-        }
-      }
+        }      }
 
       await tx.order.delete({
         where: { id: orderId }

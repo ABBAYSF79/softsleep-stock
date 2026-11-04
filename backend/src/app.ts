@@ -6,6 +6,9 @@ dotenv.config();
 
 const app = express();
 
+// Production sits behind one reverse proxy; needed so rate limiting sees the client IP.
+app.set('trust proxy', 1);
+
 // Configure CORS
 app.use(cors({
   origin: (origin, callback) => {
@@ -36,9 +39,6 @@ import userRoutes from './routes/users';
 import productRoutes from './routes/products';
 import orderRoutes from './routes/orders';
 import stockRoutes from './routes/stock';
-import pillowStockRoutes from './routes/pillow-stock';
-import pillowOrdersRoutes from './routes/pillow-orders';
-import inventoryRoutes from './routes/inventory';
 import deliveryRoutes from './routes/delivery';
 import dashboardRoutes from './routes/dashboard';
 import settingsRoutes from './routes/settings';
@@ -48,6 +48,7 @@ import confirmationUsersRoutes from './routes/confirmation-users';
 import invoicesRoutes from './routes/invoices';
 import orderFollowupsRoutes from './routes/order-followups';
 import amanaTrackingRoutes from './routes/amana-tracking';
+import publicConfirmationRoutes from './routes/public-confirmation';
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -55,9 +56,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/stock', stockRoutes);
-app.use('/api/pillow-stock', pillowStockRoutes);
-app.use('/api/pillow-orders', pillowOrdersRoutes);
-app.use('/api/inventory', inventoryRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -67,6 +65,7 @@ app.use('/api/confirmation-users', confirmationUsersRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/order-followups', orderFollowupsRoutes);
 app.use('/api/amana-tracking', amanaTrackingRoutes);
+app.use('/api/public/confirmation', publicConfirmationRoutes);
 
 const PORT = process.env.PORT || 3001;
 

@@ -16,6 +16,9 @@ model ConfirmationUser {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Public portal access code. Admin-only: never send it to non-admin users.
+  accessCode            String?   @unique
+  accessCodeGeneratedAt DateTime?
 
   // Relations
   salesmanId Int
@@ -105,6 +108,13 @@ model Order {
   commission        Decimal          @db.Decimal(10, 2)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+  /// First time the order entered IN_PROCESS (shipment / processing started)
+  inProcessAt       DateTime?
+  /// Last time the order was marked DELIVERED
+  deliveredAt       DateTime?
+  /// Date the customer postponed delivery to (set while status = REPORTED)
+  reportedUntil     DateTime?
+  reportReason      String?          @db.Text
   address           String?
   phone             String?
   deliveryServiceId Int?
@@ -130,6 +140,9 @@ model Order {
   @@index([userId], map: "Order_userId_fkey")
   @@index([enteredByUserId])
   @@index([locationId])
+  @@index([inProcessAt])
+  @@index([deliveredAt])
+  @@index([status, reportedUntil])
 }
 
 model OrderItem {
@@ -417,6 +430,8 @@ enum OrderStatus {
   IN_PROCESS
   DELIVERED
   RETURNED
+  /// Postponed by the customer — behaves like PENDING (stock not deducted yet)
+  REPORTED
 }
 
 enum StockChangeType {

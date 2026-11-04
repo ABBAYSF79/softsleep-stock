@@ -249,7 +249,24 @@ export async function exportProductOverviewToExcel(
   saveAs(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
 }
 
-export type OrdersExcelVariant = 'full' | 'management';
+/** @deprecated use 'amana' — kept for callers that still pass 'management' */
+export type OrdersExcelVariant = 'full' | 'management' | 'amana' | 'softsleep';
+
+function formatOrderItemsForManagementExcel(order: any): string {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const pillows = Array.isArray(order?.pillowItems) ? order.pillowItems : [];
+  const parts: string[] = [];
+
+  for (const item of items) {
+    parts.push(
+      `${item?.quantity ?? 0}x ${item?.product?.name || item?.productName || 'Unknown'} (${item?.variant?.name || item?.variantName || 'Unknown'})`
+    );
+  }
+  for (const item of pillows) {
+    parts.push(`${item?.quantity ?? 0}x ${item?.pillowName || 'Accessoire'}`);
+  }
+  return parts.join(', ');
+}
 
 export const exportOrdersToExcel = async (
   orders: any[],
@@ -258,37 +275,48 @@ export const exportOrdersToExcel = async (
 ) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Orders');
-  const isManagement = variant === 'management';
+  const isAmana = variant === 'amana' || variant === 'management';
+  const isSoftsleep = variant === 'softsleep';
 
-  worksheet.columns = isManagement
+  worksheet.columns = isAmana
     ? [
-        { header: 'Order', key: 'id', width: 10 },
-        { header: 'Nom', key: 'customerName', width: 20 },
-        { header: 'Telephone', key: 'phone', width: 15 },
-        { header: 'Ville', key: 'city', width: 15 },
-        { header: 'Tracking', key: 'trackingCode', width: 18 },
-        { header: 'Prix', key: 'totalAmount', width: 15 },
-        { header: 'Produit', key: 'items', width: 50 },
-        { header: 'Note', key: 'note', width: 28 },
+        { header: 'Nom', key: 'customerName', width: 22 },
+        { header: 'Ville', key: 'city', width: 16 },
+        { header: 'Adresse Complete', key: 'address', width: 40 },
+        { header: 'TELEPHONE', key: 'phone', width: 16 },
+        { header: 'CODE A BARRE', key: 'trackingCode', width: 20 },
+        { header: 'PRIX', key: 'totalAmount', width: 12 },
       ]
-    : [
-        { header: 'Order', key: 'id', width: 10 },
-        { header: 'Date', key: 'date', width: 18 },
-        { header: 'Nom', key: 'customerName', width: 20 },
-        { header: 'Telephone', key: 'phone', width: 15 },
-        { header: 'Ville', key: 'city', width: 15 },
-        { header: 'Service Livraison', key: 'deliveryService', width: 20 },
-        { header: 'Tracking', key: 'trackingCode', width: 18 },
-        { header: 'Statut', key: 'status', width: 14 },
-        { header: 'Adresse', key: 'address', width: 28 },
-        { header: 'Prix', key: 'totalAmount', width: 15 },
-        { header: 'Produit', key: 'items', width: 50 },
-        { header: 'Note', key: 'note', width: 28 },
-      ];
+    : isSoftsleep
+      ? [
+          { header: 'Order', key: 'id', width: 10 },
+          { header: 'Nom', key: 'customerName', width: 22 },
+          { header: 'Telephone', key: 'phone', width: 16 },
+          { header: 'Ville', key: 'city', width: 16 },
+          { header: 'Prix', key: 'totalAmount', width: 12 },
+          { header: 'Produit', key: 'items', width: 48 },
+          { header: 'Note', key: 'note', width: 28 },
+        ]
+      : [
+          { header: 'Order', key: 'id', width: 10 },
+          { header: 'Date', key: 'date', width: 18 },
+          { header: 'Nom', key: 'customerName', width: 20 },
+          { header: 'Telephone', key: 'phone', width: 15 },
+          { header: 'Ville', key: 'city', width: 15 },
+          { header: 'Service Livraison', key: 'deliveryService', width: 20 },
+          { header: 'Tracking', key: 'trackingCode', width: 18 },
+          { header: 'Statut', key: 'status', width: 14 },
+          { header: 'Adresse', key: 'address', width: 28 },
+          { header: 'Prix', key: 'totalAmount', width: 15 },
+          { header: 'Produit', key: 'items', width: 50 },
+          { header: 'Note', key: 'note', width: 28 },
+        ];
 
   // Style header row
-  worksheet.getRow(1).font = { bold: true };
-  worksheet.getRow(1).fill = {
+  const headerRow = worksheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.fill = {
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FFE0E0E0' }
@@ -298,20 +326,28 @@ export const exportOrdersToExcel = async (
   let prixTotal = 0;
   orders.forEach(order => {
     const createdAt = order?.createdAt ? new Date(order.createdAt) : null;
-    const items = Array.isArray(order?.items) ? order.items : [];
-    const itemsString = items.map((item: any) => 
-      `${item?.quantity ?? 0}x ${item?.product?.name || item?.productName || 'Unknown'} (${item?.variant?.name || item?.variantName || 'Unknown'})`
-    ).join(', ');
+    const itemsString = formatOrderItemsForManagementExcel(order);
     const amount = Number(order?.totalAmount ?? 0);
     prixTotal += amount;
 
-    if (isManagement) {
+    if (isAmana) {
+      worksheet.addRow({
+        customerName: order?.customerName || '',
+        city: order?.city || '',
+        address: order?.address || '',
+        phone: order?.phone || '',
+        trackingCode: order?.trackingCode || '',
+        totalAmount: amount,
+      });
+      return;
+    }
+
+    if (isSoftsleep) {
       worksheet.addRow({
         id: order?.id ?? '',
-        customerName: order.customerName,
-        phone: order.phone || '',
-        city: order.city || '',
-        trackingCode: order?.trackingCode || '',
+        customerName: order?.customerName || '',
+        phone: order?.phone || '',
+        city: order?.city || '',
         totalAmount: amount,
         items: itemsString,
         note: typeof order?.note === 'string' ? order.note : '',
@@ -335,13 +371,18 @@ export const exportOrdersToExcel = async (
     });
   });
 
-  if (isManagement && orders.length > 0) {
+  if (isAmana) {
+    worksheet.getColumn('totalAmount').numFmt = '#,##0.00';
+    worksheet.getColumn('address').alignment = { horizontal: 'center', wrapText: true };
+    worksheet.getColumn('trackingCode').alignment = { horizontal: 'center' };
+  }
+
+  if (isSoftsleep && orders.length > 0) {
     const totalRow = worksheet.addRow({
       id: '',
       customerName: 'TOTAL',
       phone: '',
       city: '',
-      trackingCode: '',
       totalAmount: prixTotal,
       items: '',
       note: '',

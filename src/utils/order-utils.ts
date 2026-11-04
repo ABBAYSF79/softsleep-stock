@@ -2,10 +2,56 @@ import { OrderItem, ProductVariant } from "@/types";
 
 export const ORDER_STATUSES = {
   PENDING: { label: "Pending", value: "PENDING", color: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" },
+  REPORTED: { label: "Reporté", value: "REPORTED", color: "bg-orange-100 text-orange-800 hover:bg-orange-100" },
   IN_PROCESS: { label: "In Process", value: "IN_PROCESS", color: "bg-blue-100 text-blue-800 hover:bg-blue-100" },
   DELIVERED: { label: "Delivered", value: "DELIVERED", color: "bg-green-100 text-green-800 hover:bg-green-100" },
   RETURNED: { label: "Returned", value: "RETURNED", color: "bg-red-100 text-red-800 hover:bg-red-100" },
 } as const;
+
+/** PENDING or REPORTED: order is waiting and its stock has not been deducted yet. */
+export const isOpenOrderStatus = (status: string | null | undefined): boolean => {
+  const s = status?.toUpperCase();
+  return s === "PENDING" || s === "REPORTED";
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Local calendar day as YYYY-MM-DD (value format of <input type="date">). */
+export const toYmd = (date: Date): string =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+export const addDaysYmd = (days: number, from: Date = new Date()): string => {
+  const d = new Date(from);
+  d.setDate(d.getDate() + days);
+  return toYmd(d);
+};
+
+/** Report date is stored at noon UTC, so its UTC day is the chosen calendar day. */
+export const reportDateYmd = (value: string | Date | null | undefined): string | null => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+};
+
+export const formatReportDate = (value: string | Date | null | undefined): string => {
+  const ymd = reportDateYmd(value);
+  if (!ymd) return "—";
+  const [y, m, d] = ymd.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+export type ReportDueState = "overdue" | "today" | "upcoming" | "missing";
+
+export const getReportDueState = (order: { status?: string; reportedUntil?: string | null }): ReportDueState | null => {
+  if (order?.status !== "REPORTED") return null;
+  const ymd = reportDateYmd(order.reportedUntil);
+  if (!ymd) return "missing";
+  const today = toYmd(new Date());
+  if (ymd < today) return "overdue";
+  if (ymd === today) return "today";
+  return "upcoming";
+};
 
 /** Amana tracking: SS + year + order reference + MA (no separators) */
 export const generateAmanaTrackingCode = (orderId: number, date: Date = new Date()): string =>

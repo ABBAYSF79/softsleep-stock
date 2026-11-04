@@ -79,5 +79,5 @@ export function orderLocationErrorToHttp(error: unknown): {
  * Block when accessory/mattress stock has already been deducted for this order.
  */
 export function canChangeOrderFulfillmentLocation(status: string): boolean {
-  return status === 'PENDING' || status === 'RETURNED';
+  return status === 'PENDING' || status === 'REPORTED' || status === 'RETURNED';
 }

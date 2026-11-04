@@ -5,6 +5,7 @@ import api from "@/lib/api";
 
 export const MATTRESS_ORDER_STATUSES = [
   { value: "PENDING", label: "En attente" },
+  { value: "REPORTED", label: "Reporté" },
   { value: "IN_PROCESS", label: "En cours" },
   { value: "DELIVERED", label: "Livré" },
   { value: "RETURNED", label: "Retourné" },

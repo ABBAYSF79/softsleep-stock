@@ -1,6 +1,10 @@
 import { Router } from "express";
-import { OrderStatus, PrismaClient, UserRole } from "@prisma/client";
+import { OrderStatus, Prisma, PrismaClient, UserRole } from "@prisma/client";
 import { authMiddleware, adminOnly } from "../middleware/auth";
+import {
+  generateAccessCode,
+  toPublicConfirmationUser,
+} from "../utils/access-code";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -28,7 +32,8 @@ router.get("/", authMiddleware, async (req, res) => {
           }
         }
       });
-      return res.json(confirmationUsers);
+      const isAdmin = req.user.role === UserRole.ADMIN;
+      return res.json(confirmationUsers.map((u) => toPublicConfirmationUser(u, isAdmin)));
     } else {
       // Salesperson: return only their confirmation users
       const confirmationUsers = await prisma.confirmationUser.findMany({
@@ -50,7 +55,7 @@ router.get("/", authMiddleware, async (req, res) => {
           }
         }
       });
-      return res.json(confirmationUsers);
+      return res.json(confirmationUsers.map((u) => toPublicConfirmationUser(u, false)));
     }
   } catch (error) {
     console.error("Error in GET /confirmation-users:", error);
@@ -79,7 +84,9 @@ router.get("/my-team", authMiddleware, async (req, res) => {
         }
       }
     });
-    res.json(confirmationUsers);
+    res.json(
+      confirmationUsers.map((u) => toPublicConfirmationUser(u, req.user.role === UserRole.ADMIN))
+    );
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch confirmation users" });
   }
@@ -244,7 +251,7 @@ router.post("/", authMiddleware, async (req, res) => {
         }
       }
     });
-    res.json(confirmationUser);
+    res.json(toPublicConfirmationUser(confirmationUser, req.user.role === UserRole.ADMIN));
   } catch (error) {
     res.status(500).json({ error: "Failed to create confirmation user" });
   }
@@ -293,9 +300,75 @@ router.put("/:id", authMiddleware, async (req, res) => {
         }
       }
     });
-    res.json(confirmationUser);
+    res.json(toPublicConfirmationUser(confirmationUser, req.user.role === UserRole.ADMIN));
   } catch (error) {
     res.status(500).json({ error: "Failed to update confirmation user" });
+  }
+});
+
+// Generate or regenerate the public portal access code (admin only)
+router.post("/:id/access-code", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid confirmation user" });
+    }
+
+    const existing = await prisma.confirmationUser.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: "Confirmation user not found" });
+    }
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateAccessCode();
+      try {
+        const updated = await prisma.confirmationUser.update({
+          where: { id },
+          data: {
+            accessCode: code,
+            accessCodeGeneratedAt: new Date(),
+          },
+        });
+        return res.json({
+          code,
+          accessCodeGeneratedAt: updated.accessCodeGeneratedAt,
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    res.status(500).json({ error: "Failed to generate a unique access code" });
+  } catch (error) {
+    console.error("Error generating access code:", error);
+    res.status(500).json({ error: "Failed to generate access code" });
+  }
+});
+
+// Revoke the public portal access code (admin only)
+router.delete("/:id/access-code", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid confirmation user" });
+    }
+
+    const existing = await prisma.confirmationUser.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: "Confirmation user not found" });
+    }
+
+    await prisma.confirmationUser.update({
+      where: { id },
+      data: { accessCode: null, accessCodeGeneratedAt: null },
+    });
+    res.json({ message: "Access code revoked" });
+  } catch (error) {
+    console.error("Error revoking access code:", error);
+    res.status(500).json({ error: "Failed to revoke access code" });
   }
 });
 

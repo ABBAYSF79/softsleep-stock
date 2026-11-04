@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient, OrderStatus } from '@prisma/client';
 import { getInventoryMode } from './InventoryMode';
+import { isOpenOrderStatus, isStockDeductedStatus } from '../utils/order-status';
 import {
   ReservationDomainError,
   ReservationService,
@@ -177,7 +178,7 @@ export class OrderAccessoryInventory {
     }
 
     // Cancel / hold back to PENDING — reverse delivery so re-delivery can fulfill again
-    if (newS === 'PENDING' && (oldS === 'IN_PROCESS' || oldS === 'DELIVERED')) {
+    if (isOpenOrderStatus(newS) && isStockDeductedStatus(oldS)) {
       const current =
         args.source === 'ORDER'
           ? await this.reservations.findOpenForOrderInTx(tx, args.orderId, 'ORDER')
@@ -187,7 +188,7 @@ export class OrderAccessoryInventory {
       if (current.status === 'FULFILLED' || current.status === 'PARTIALLY_FULFILLED') {
         await this.reservations.reverseDeliveryInTx(tx, current.id, {
           userId: args.userId,
-          reason: `${args.source} #${args.orderId} reverted to PENDING`,
+          reason: `${args.source} #${args.orderId} reverted to ${newS}`,
         });
       }
 

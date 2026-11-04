@@ -27,7 +27,7 @@ export class LegacyOrderTransitionService {
   }
 
   async listDiagnostic() {
-    const openStatuses: OrderStatus[] = ['PENDING', 'IN_PROCESS'];
+    const openStatuses: OrderStatus[] = ['PENDING', 'REPORTED', 'IN_PROCESS'];
     const [mattress, pillowOrders, transitions] = await Promise.all([
       this.prisma.order.findMany({
         where: { status: { in: openStatuses }, pillowItems: { some: {} } },

@@ -952,6 +952,7 @@ const ProductOverview = () => {
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="PENDING">Pending</SelectItem>
+              <SelectItem value="REPORTED">Reporté</SelectItem>
               <SelectItem value="IN_PROCESS">In process</SelectItem>
               <SelectItem value="DELIVERED">Delivered</SelectItem>
               <SelectItem value="RETURNED">Returned</SelectItem>

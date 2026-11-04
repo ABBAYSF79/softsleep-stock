@@ -11,13 +11,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useFullUpdateOrder, useProducts, useDeliveryServices, usePillowStock } from "@/hooks/useApi";
+import { useFullUpdateOrder, useProducts, useDeliveryServices } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { Search, Save, Lock, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api"; 
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatPrice } from "@/utils/order-utils";
+import { formatPrice, reportDateYmd } from "@/utils/order-utils";
+import {
+  ReportDateFields,
+  emptyReportDate,
+  isReportDateValid,
+  type ReportDateValue,
+} from "@/components/orders/ReportDateFields";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -41,9 +47,6 @@ const AdvancedEdit = () => {
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState<string>(""); // Optional manual price
   const [lowStockWarning, setLowStockWarning] = useState<string | null>(null);
-  const [selectedPillowId, setSelectedPillowId] = useState("");
-  const [pillowQty, setPillowQty] = useState(1);
-
   // Form States
   const [formData, setFormData] = useState<any>({
     customerName: "",
@@ -59,13 +62,12 @@ const AdvancedEdit = () => {
     pillowItems: [],
     confirmationUserId: "none"
   });
+  const [report, setReport] = useState<ReportDateValue>(emptyReportDate);
 
   const { user } = useAuth();
   const fullUpdateMutation = useFullUpdateOrder();
   const { data: products } = useProducts();
   const { data: deliveryServices } = useDeliveryServices();
-  const { data: pillows } = usePillowStock();
-
   const calculateTotal = (items: any[], pillowItems: any[]) => {
     const itemsTotal = (Array.isArray(items) ? items : []).reduce(
       (sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 0),
@@ -142,6 +144,7 @@ const AdvancedEdit = () => {
     try {
       const { data } = await api.get(`/orders/${id}`);
       setOrder(data);
+      setReport({ date: reportDateYmd(data.reportedUntil) ?? "", reason: data.reportReason ?? "" });
       
       setFormData({
         customerName: data.customerName,
@@ -195,6 +198,16 @@ const AdvancedEdit = () => {
       return;
     }
 
+    const reportChanged =
+      formData.status === "REPORTED" &&
+      (order.status !== "REPORTED" ||
+        report.date !== (reportDateYmd(order.reportedUntil) ?? "") ||
+        report.reason !== (order.reportReason ?? ""));
+    if (reportChanged && !isReportDateValid(report)) {
+      toast.error("Choisissez une date de report (aujourd'hui ou plus tard)");
+      return;
+    }
+
     const computedTotal = calculateTotal(formData.items || [], formData.pillowItems || []);
     const parsedTotal = formData.totalAmount === "" ? NaN : Number(formData.totalAmount);
 
@@ -203,6 +216,7 @@ const AdvancedEdit = () => {
       data: {
         password: "admin123456",
         ...formData,
+        ...(reportChanged ? { reportedUntil: report.date, reportReason: report.reason.trim() } : {}),
         items: (formData.items || []).map((i: any) => ({
           variantId: i.variantId,
           quantity: i.quantity,
@@ -316,38 +330,6 @@ const AdvancedEdit = () => {
   const selectedServiceCities = deliveryServices?.find(
     service => service.id.toString() === formData.deliveryServiceId
   )?.cities || [];
-
-  const handleAddPillowItem = () => {
-    const pillowId = Number(selectedPillowId);
-    if (!Number.isInteger(pillowId) || pillowId <= 0) {
-      toast.error("Please select a pillow");
-      return;
-    }
-
-    if (pillowQty < 1) {
-      toast.error("Quantity must be at least 1");
-      return;
-    }
-
-    const pillow = (pillows as any[])?.find((p: any) => Number(p.id) === pillowId);
-    if (!pillow) return;
-
-    const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.slice() : [];
-    const idx = next.findIndex((x: any) => Number(x.pillowId) === pillowId);
-    const unitPrice = parseFloat(pillow.price);
-    if (idx >= 0) {
-      next[idx] = { ...next[idx], quantity: Number(next[idx].quantity || 0) + pillowQty, price: unitPrice, pillowName: pillow.name };
-    } else {
-      next.push({ pillowId, pillowName: pillow.name, quantity: pillowQty, price: unitPrice });
-    }
-
-    const newTotal =
-      calculateTotal(formData.items, next);
-
-    setFormData({ ...formData, pillowItems: next, totalAmount: newTotal.toString() });
-    setSelectedPillowId("");
-    setPillowQty(1);
-  };
 
   const handleRemovePillowItem = (pillowId: number) => {
     const next = Array.isArray(formData.pillowItems) ? formData.pillowItems.filter((x: any) => Number(x.pillowId) !== Number(pillowId)) : [];
@@ -497,10 +479,14 @@ const AdvancedEdit = () => {
                     options={[
                       { label: "None", value: "none" },
                       ...(Array.isArray(confirmationUsers) ? confirmationUsers
-                        .filter((user: any) => user.active)
-                        .map((user: any) => ({
-                          label: `${user.name}${user.linkedSalesUser ? ` (Linked to ${user.linkedSalesUser.name})` : ''}`,
-                          value: user.id.toString(),
+                        .filter(
+                          (cu: any) =>
+                            cu.active ||
+                            cu.id?.toString() === formData.confirmationUserId
+                        )
+                        .map((cu: any) => ({
+                          label: `${cu.name}${cu.linkedSalesUser ? ` (Linked to ${cu.linkedSalesUser.name})` : ''}${cu.active === false ? ' (inactive)' : ''}`,
+                          value: cu.id.toString(),
                         })) : [])
                     ]}
                     placeholder="Select a confirmation user"
@@ -526,14 +512,22 @@ const AdvancedEdit = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="PENDING">PENDING</SelectItem>
-                      <SelectItem value="CONFIRMED">CONFIRMED</SelectItem>
+                      <SelectItem value="REPORTED">REPORTÉ</SelectItem>
                       <SelectItem value="IN_PROCESS">IN PROCESS</SelectItem>
                       <SelectItem value="DELIVERED">DELIVERED</SelectItem>
                       <SelectItem value="RETURNED">RETURNED</SelectItem>
-                      <SelectItem value="CANCELLED">CANCELLED</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {formData.status === "REPORTED" && (
+                  <ReportDateFields
+                    value={report}
+                    onChange={setReport}
+                    idPrefix="advanced-report"
+                    className="md:col-span-2"
+                  />
+                )}
                 
                 <div className="space-y-2">
                   <Label>Delivery Service</Label>
@@ -716,45 +710,9 @@ const AdvancedEdit = () => {
                   </div>
                 ))}
 
+                {Array.isArray(formData.pillowItems) && formData.pillowItems.length > 0 && (
                 <div className="border-t pt-4 space-y-4">
                   <div className="text-sm font-semibold">Accessoires (supplement)</div>
-
-                  <div className="grid grid-cols-12 gap-4 items-end">
-                    <div className="col-span-7 space-y-2">
-                      <Label>Accessoire</Label>
-                      <SearchableSelect
-                        value={selectedPillowId}
-                        onValueChange={(val) => setSelectedPillowId(val)}
-                        options={(Array.isArray(pillows) ? pillows : []).map((p: any) => {
-                          const stock = Number(p.stock || 0);
-                          const stockStatus = stock === 0 ? " - OUT OF STOCK" : stock <= 3 ? ` - LOW STOCK (${stock})` : ` - Stock: ${stock}`;
-                          return {
-                            label: `${p.name} (MAD ${formatPrice(p.price)})${stockStatus}`,
-                            value: String(p.id),
-                            disabled: stock === 0,
-                          };
-                        })}
-                        placeholder="Select accessoire"
-                        searchPlaceholder="Search accessoire..."
-                      />
-                    </div>
-
-                    <div className="col-span-3 space-y-2">
-                      <Label>Quantity</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={pillowQty}
-                        onChange={(e) => setPillowQty(Math.max(1, parseInt(e.target.value) || 1))}
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <Button type="button" onClick={handleAddPillowItem} className="w-full">
-                        <Plus className="h-4 w-4 mr-2" /> Add
-                      </Button>
-                    </div>
-                  </div>
 
                   {(Array.isArray(formData.pillowItems) ? formData.pillowItems : []).map((item: any, index: number) => (
                     <div key={`${item.pillowId}-${index}`} className="flex gap-4 items-end border p-4 rounded-lg bg-gray-50">
@@ -804,6 +762,7 @@ const AdvancedEdit = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </CardContent>
             </Card>
 

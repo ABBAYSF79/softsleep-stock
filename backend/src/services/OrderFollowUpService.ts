@@ -35,7 +35,7 @@ export function normalizeFollowUpContent(raw: unknown): string {
 }
 
 const followUpInclude = {
-  user: { select: { id: true, name: true } },
+  user: { select: { id: true, name: true, role: true } },
 } as const;
 
 export class OrderFollowUpService {
