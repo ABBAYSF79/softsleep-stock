@@ -19,12 +19,15 @@ const baseProps = {
   onSalesmanIdFilterChange: vi.fn(),
   deliveryServiceIdFilter: "all",
   onDeliveryServiceIdFilterChange: vi.fn(),
+  cityFilter: "all",
+  onCityFilterChange: vi.fn(),
   dateFilter: "last3months",
   onDateFilterChange: vi.fn(),
   customDateRange: undefined,
   onCustomDateRangeChange: vi.fn(),
   salesmanOptions: [{ label: "Ibrahim", value: "1" }],
   deliveryServiceOptions: [{ label: "Amana", value: "10" }],
+  cityOptions: [],
   activeFiltersCount: 0,
   onClearFilters: vi.fn(),
 };
@@ -80,6 +83,8 @@ describe("OrderManagementToolbar", () => {
     expect(screen.getByLabelText("Filter by date")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by salesman")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by delivery service")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by city")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by city")).toBeDisabled();
     expect(screen.getByTestId("order-management-active-filters")).toHaveTextContent(
       "1 filter"
     );
@@ -102,6 +107,22 @@ describe("OrderManagementToolbar", () => {
     expect(screen.queryByTestId("order-management-add")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Filter by salesman")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Filter by delivery service")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by city")).toBeDisabled();
+  });
+
+  it("enables city filter with cities from the selected delivery service", () => {
+    render(
+      <OrderManagementToolbar
+        {...baseProps}
+        deliveryServiceIdFilter="10"
+        cityOptions={[
+          { label: "Casablanca", value: "Casablanca" },
+          { label: "Rabat", value: "Rabat" },
+        ]}
+      />
+    );
+
+    expect(screen.getByLabelText("Filter by city")).not.toBeDisabled();
   });
 
   it("shows custom date range when date filter is custom", () => {

@@ -99,6 +99,7 @@ const OrderManagement = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [salesmanIdFilter, setSalesmanIdFilter] = useState<string>("all");
   const [deliveryServiceIdFilter, setDeliveryServiceIdFilter] = useState<string>("all");
+  const [cityFilter, setCityFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("last3months");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
@@ -153,12 +154,30 @@ const OrderManagement = () => {
 
   const { data: deliveryServices = [] } = useDeliveryServices();
 
+  const cityOptions = useMemo(() => {
+    if (deliveryServiceIdFilter === "all") return [];
+    const service = (deliveryServices as any[]).find(
+      (s) => String(s.id) === String(deliveryServiceIdFilter)
+    );
+    const cities: string[] = Array.isArray(service?.cities) ? service.cities : [];
+    return [...cities]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "fr"))
+      .map((city) => ({ label: city, value: city }));
+  }, [deliveryServices, deliveryServiceIdFilter]);
+
+  const handleDeliveryServiceIdFilterChange = (value: string) => {
+    setDeliveryServiceIdFilter(value);
+    setCityFilter("all");
+  };
+
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (searchQuery.trim()) count += 1;
     if (statusFilter !== "all") count += 1;
     if (isAdmin && salesmanIdFilter !== "all") count += 1;
     if (deliveryServiceIdFilter !== "all") count += 1;
+    if (cityFilter !== "all") count += 1;
     if (dateFilter !== "last3months") count += 1;
     return count;
   }, [
@@ -167,6 +186,7 @@ const OrderManagement = () => {
     isAdmin,
     salesmanIdFilter,
     deliveryServiceIdFilter,
+    cityFilter,
     dateFilter,
   ]);
 
@@ -175,6 +195,7 @@ const OrderManagement = () => {
     setStatusFilter("all");
     setSalesmanIdFilter("all");
     setDeliveryServiceIdFilter("all");
+    setCityFilter("all");
     setDateFilter("last3months");
     setCustomDateRange(undefined);
   };
@@ -189,6 +210,7 @@ const OrderManagement = () => {
       search: debouncedSearch,
       ...(isAdmin && salesmanIdFilter !== "all" ? { salesmanId: salesmanIdFilter } : {}),
       ...(deliveryServiceIdFilter !== "all" ? { deliveryServiceId: deliveryServiceIdFilter } : {}),
+      ...(cityFilter !== "all" ? { city: cityFilter } : {}),
       ...dateParams,
     }),
     [
@@ -199,6 +221,7 @@ const OrderManagement = () => {
       isAdmin,
       salesmanIdFilter,
       deliveryServiceIdFilter,
+      cityFilter,
       dateParams,
     ]
   );
@@ -443,12 +466,19 @@ const OrderManagement = () => {
   };
 
   useEffect(() => {
+    if (cityFilter === "all") return;
+    const stillValid = cityOptions.some((option) => option.value === cityFilter);
+    if (!stillValid) setCityFilter("all");
+  }, [cityFilter, cityOptions]);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [
     searchQuery,
     statusFilter,
     salesmanIdFilter,
     deliveryServiceIdFilter,
+    cityFilter,
     dateFilter,
     dateParams,
   ]);
@@ -462,6 +492,7 @@ const OrderManagement = () => {
     statusFilter,
     salesmanIdFilter,
     deliveryServiceIdFilter,
+    cityFilter,
     dateFilter,
     dateParams,
     clearSelection,
@@ -530,7 +561,9 @@ const OrderManagement = () => {
           salesmanIdFilter={salesmanIdFilter}
           onSalesmanIdFilterChange={setSalesmanIdFilter}
           deliveryServiceIdFilter={deliveryServiceIdFilter}
-          onDeliveryServiceIdFilterChange={setDeliveryServiceIdFilter}
+          onDeliveryServiceIdFilterChange={handleDeliveryServiceIdFilterChange}
+          cityFilter={cityFilter}
+          onCityFilterChange={setCityFilter}
           dateFilter={dateFilter}
           onDateFilterChange={setDateFilter}
           customDateRange={customDateRange}
@@ -550,6 +583,7 @@ const OrderManagement = () => {
                 }))
               : []
           }
+          cityOptions={cityOptions}
           activeFiltersCount={activeFiltersCount}
           onClearFilters={clearFilters}
         />

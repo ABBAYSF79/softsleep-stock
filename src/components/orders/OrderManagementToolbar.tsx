@@ -29,12 +29,15 @@ export type OrderManagementToolbarProps = {
   onSalesmanIdFilterChange: (value: string) => void;
   deliveryServiceIdFilter: string;
   onDeliveryServiceIdFilterChange: (value: string) => void;
+  cityFilter: string;
+  onCityFilterChange: (value: string) => void;
   dateFilter: string;
   onDateFilterChange: (value: string) => void;
   customDateRange: DateRange | undefined;
   onCustomDateRangeChange: (value: DateRange | undefined) => void;
   salesmanOptions: Array<{ label: string; value: string }>;
   deliveryServiceOptions: Array<{ label: string; value: string }>;
+  cityOptions: Array<{ label: string; value: string }>;
   activeFiltersCount: number;
   onClearFilters: () => void;
 };
@@ -55,15 +58,19 @@ export function OrderManagementToolbar({
   onSalesmanIdFilterChange,
   deliveryServiceIdFilter,
   onDeliveryServiceIdFilterChange,
+  cityFilter,
+  onCityFilterChange,
   dateFilter,
   onDateFilterChange,
   customDateRange,
   onCustomDateRangeChange,
   salesmanOptions,
   deliveryServiceOptions,
+  cityOptions,
   activeFiltersCount,
   onClearFilters,
 }: OrderManagementToolbarProps) {
+  const cityFilterEnabled = deliveryServiceIdFilter !== "all" && cityOptions.length > 0;
   return (
     <section
       className="overflow-hidden rounded-lg border border-slate-200 bg-white"
@@ -230,11 +237,22 @@ export function OrderManagementToolbar({
               placeholder="Delivery service"
               searchPlaceholder="Search service..."
               aria-label="Filter by delivery service"
-              className={
-                isAdmin
-                  ? "h-9 w-full min-w-0 border-slate-200 bg-white text-sm shadow-none sm:flex-1 sm:basis-[160px]"
-                  : "col-span-2 h-9 w-full min-w-0 border-slate-200 bg-white text-sm shadow-none sm:col-span-1 sm:flex-1 sm:basis-[160px]"
+              className="h-9 w-full min-w-0 border-slate-200 bg-white text-sm shadow-none sm:flex-1 sm:basis-[160px]"
+            />
+
+            <SearchableSelect
+              value={cityFilterEnabled ? cityFilter : "all"}
+              onValueChange={(value) => onCityFilterChange(value || "all")}
+              options={[{ label: "All cities", value: "all" }, ...cityOptions]}
+              placeholder={
+                deliveryServiceIdFilter === "all"
+                  ? "Select a delivery service first"
+                  : "City"
               }
+              searchPlaceholder="Search city..."
+              aria-label="Filter by city"
+              disabled={!cityFilterEnabled}
+              className="h-9 w-full min-w-0 border-slate-200 bg-white text-sm shadow-none sm:flex-1 sm:basis-[140px]"
             />
           </div>
 
