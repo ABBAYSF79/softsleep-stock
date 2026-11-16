@@ -11,6 +11,7 @@ import Products from "./pages/Products";
 import Stock from "./pages/Stock";
 import Orders from "./pages/Orders";
 import OrderManagement from "./pages/OrderManagement";
+import AmanaManagement from "./pages/AmanaManagement";
 import LivreurOrders from "./pages/LivreurOrders";
 import LivreurStats from "./pages/LivreurStats";
 import Users from "./pages/Users";
@@ -75,6 +76,11 @@ const App = () => (
             <Route path="/orders-management" element={
               <ProtectedRoute>
                 <OrderManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/amana-management" element={
+              <ProtectedRoute>
+                <AmanaManagement />
               </ProtectedRoute>
             } />
             <Route path="/livreur/orders" element={

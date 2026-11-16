@@ -1090,6 +1090,244 @@ export const useAddOrderFollowUp = () => {
   });
 };
 
+/** Manual Amana Management (parcel tracking) — separate from BAM scrape `useAmanaTracking`. */
+export type AmanaParcelStatusOption = {
+  code: string;
+  label: string;
+  color: string;
+};
+
+export type AmanaParcelStatusMeta = {
+  code: string;
+  label: string;
+  color?: string;
+};
+
+export type AmanaManagementOrderRow = {
+  id: number;
+  customerName: string;
+  phone?: string | null;
+  city?: string | null;
+  address?: string | null;
+  trackingCode?: string | null;
+  createdAt: string;
+  inProcessAt?: string | null;
+  orderStatus: string;
+  deliveryService?: { id: number; name: string } | null;
+  amanaTracking: {
+    id: number;
+    status: AmanaParcelStatusMeta;
+    initialStatusAt: string;
+    lastStatusAt: string;
+  } | null;
+};
+
+export type AmanaManagementStatusCount = {
+  code: string;
+  label: string;
+  color: string;
+  count: number;
+};
+
+export type AmanaManagementSummary = {
+  totalActive: number;
+  uninitialized: number;
+  initialized: number;
+  byStatus: AmanaManagementStatusCount[];
+  consistent: boolean;
+};
+
+export type AmanaManagementListResponse = {
+  data: AmanaManagementOrderRow[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  summary?: AmanaManagementSummary;
+};
+
+export type AmanaParcelTrackingDetail = {
+  id: number;
+  orderId: number;
+  status: AmanaParcelStatusMeta;
+  initialStatusAt: string;
+  lastStatusAt: string;
+  createdAt: string;
+  updatedAt: string;
+  history?: Array<{
+    id: number;
+    oldStatus: AmanaParcelStatusMeta | null;
+    newStatus: AmanaParcelStatusMeta;
+    changedAt: string;
+    note: string | null;
+    changedBy: { id: number; name: string; role: string } | null;
+  }>;
+};
+
+export type AmanaManagementFilters = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  city?: string;
+};
+
+export type AmanaManagementExportRow = {
+  id: number;
+  customerName: string;
+  city?: string | null;
+  trackingCode?: string | null;
+  amanaStatus: AmanaParcelStatusMeta | null;
+  /** Note on the latest history entry that set the current status. */
+  currentStatusNote?: string | null;
+};
+
+/** Unpaginated export rows — either the selected ids or the full filtered scope. */
+export const fetchAmanaManagementExport = async (
+  body:
+    | { orderIds: number[] }
+    | Pick<AmanaManagementFilters, "search" | "status" | "city">
+) => {
+  const { data } = await api.post('/amana-management/export', body);
+  return data as { total: number; data: AmanaManagementExportRow[] };
+};
+
+export const useAmanaParcelStatuses = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ['amana-management', 'statuses'],
+    queryFn: async () => {
+      const { data } = await api.get('/amana-management/statuses');
+      return (data?.statuses ?? []) as AmanaParcelStatusOption[];
+    },
+    enabled: options?.enabled ?? true,
+    ...REFERENCE_QUERY_OPTIONS,
+  });
+};
+
+export const useAmanaManagementOrders = (
+  filters: AmanaManagementFilters,
+  options?: { enabled?: boolean }
+) => {
+  return useQuery({
+    queryKey: ['amana-management', 'list', filters],
+    queryFn: async () => {
+      const { data } = await api.get('/amana-management', { params: filters });
+      return data as AmanaManagementListResponse;
+    },
+    enabled: options?.enabled ?? true,
+    placeholderData: (previousData) => previousData,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export type AmanaParcelAlertSeverity = "CRITICAL" | "WARNING" | "INFO";
+
+export type AmanaParcelAlert = {
+  orderId: number;
+  customerName: string;
+  city?: string | null;
+  trackingCode?: string | null;
+  status: AmanaParcelStatusMeta;
+  lastUpdateAt: string;
+  lastUpdateSource: "history" | "initialStatusAt";
+  elapsedMs: number;
+  severity: AmanaParcelAlertSeverity;
+  suggestedAction: string;
+};
+
+export type AmanaParcelAlertsResponse = {
+  referenceAt: string;
+  counts: Record<AmanaParcelAlertSeverity, number> & { total: number };
+  data: AmanaParcelAlert[];
+};
+
+/** Aging alerts over the full eligible set (not paginated, ignores list filters). */
+export const useAmanaParcelAlerts = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ['amana-management', 'alerts'],
+    queryFn: async () => {
+      const { data } = await api.get('/amana-management/alerts');
+      return data as AmanaParcelAlertsResponse;
+    },
+    enabled: options?.enabled ?? true,
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useAmanaParcelTracking = (
+  orderId: number | null | undefined,
+  enabled = true
+) => {
+  return useQuery({
+    queryKey: ['amana-management', 'order', orderId],
+    enabled: enabled && Boolean(orderId),
+    queryFn: async () => {
+      const { data } = await api.get(`/amana-management/${orderId}`);
+      return data as {
+        success: boolean;
+        data: {
+          id: number;
+          customerName: string;
+          phone?: string | null;
+          city?: string | null;
+          address?: string | null;
+          trackingCode?: string | null;
+          createdAt: string;
+          inProcessAt?: string | null;
+          orderStatus: string;
+          deliveryService?: { id: number; name: string } | null;
+          amanaTracking: AmanaParcelTrackingDetail | null;
+        };
+      };
+    },
+    ...HEAVY_QUERY_OPTIONS,
+  });
+};
+
+export const useUpdateAmanaParcelStatus = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      status,
+      note,
+    }: {
+      orderId: number;
+      status: string;
+      note?: string;
+    }) => {
+      const { data } = await api.patch(`/amana-management/${orderId}/status`, {
+        status,
+        ...(note ? { note } : {}),
+      });
+      return data as {
+        success: boolean;
+        changed: boolean;
+        code?: string;
+        message?: string;
+        data: AmanaParcelTrackingDetail;
+      };
+    },
+    onSuccess: (result, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['amana-management', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['amana-management', 'alerts'] });
+      queryClient.invalidateQueries({
+        queryKey: ['amana-management', 'order', vars.orderId],
+      });
+      if (result.changed === false || result.code === 'NO_CHANGE') {
+        toast.message(result.message || 'Statut inchangé — aucun historique créé');
+      } else {
+        toast.success('Statut Amana mis à jour');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la mise à jour du statut Amana');
+    },
+  });
+};
+
 export const useApi = () => {
   return {
     getCommissionSettings,

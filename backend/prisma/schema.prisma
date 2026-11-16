@@ -63,6 +63,7 @@ model User {
   stockDocumentsValidated StockDocument[] @relation("StockDocumentValidatedBy")
   reservationsCreated Reservation[] @relation("ReservationCreatedBy")
   orderFollowUps      OrderFollowUp[]
+  amanaParcelTrackingHistory AmanaParcelTrackingHistory[] @relation("AmanaParcelTrackingChangedBy")
 
   @@index([linkedSalesUserId])
 }
@@ -133,6 +134,7 @@ model Order {
   pillowItems       OrderPillowItem[]
   reservations      Reservation[]
   followUps         OrderFollowUp[]
+  amanaParcelTracking AmanaParcelTracking?
   confirmationUserId Int?
   confirmationUser   ConfirmationUser? @relation(fields: [confirmationUserId], references: [id])
 
@@ -432,6 +434,53 @@ enum OrderStatus {
   RETURNED
   /// Postponed by the customer — behaves like PENDING (stock not deducted yet)
   REPORTED
+}
+
+/// Manual Amana Management parcel statuses (independent of Order.status / BAM scrape codes).
+enum AmanaParcelStatus {
+  SORTI_A_DESTINATION
+  ENVOI_ARRIVE
+  SORTI_PAR_FACTEUR
+  PRIS_EN_CHARGE
+  A_RECUPERER
+  ENVOI_EN_RETARD
+  REFUSE_PAR_CLIENT
+  RETARD_RESOLU
+  RETARD_ARRIVE_DESTINATION
+  LIVREE
+}
+
+/// One-to-one manual Amana tracking record for an Order. Does not store trackingCode (use Order.trackingCode).
+model AmanaParcelTracking {
+  id              Int               @id @default(autoincrement())
+  orderId         Int               @unique
+  status          AmanaParcelStatus
+  initialStatusAt DateTime
+  lastStatusAt    DateTime
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  order   Order                        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  history AmanaParcelTrackingHistory[]
+
+  @@index([status])
+  @@index([lastStatusAt])
+}
+
+model AmanaParcelTrackingHistory {
+  id                    Int                @id @default(autoincrement())
+  amanaParcelTrackingId Int
+  oldStatus             AmanaParcelStatus?
+  newStatus             AmanaParcelStatus
+  changedAt             DateTime
+  changedByUserId       Int?
+  note                  String?            @db.Text
+
+  tracking  AmanaParcelTracking @relation(fields: [amanaParcelTrackingId], references: [id], onDelete: Cascade)
+  changedBy User?               @relation("AmanaParcelTrackingChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([amanaParcelTrackingId, changedAt])
+  @@index([changedByUserId])
 }
 
 enum StockChangeType {

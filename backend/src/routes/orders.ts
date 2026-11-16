@@ -33,12 +33,14 @@ import {
   resolveReportPatch,
   type ReportPatch,
 } from '../utils/order-status';
+import { AmanaParcelTrackingService } from '../services/AmanaParcelTrackingService';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 const orderAccessoryInventory = new OrderAccessoryInventory(prisma);
 const cutoverFreeze = new CutoverFreezeService(prisma);
 const legacyTransitions = new LegacyOrderTransitionService(prisma);
+const amanaParcelTracking = new AmanaParcelTrackingService(prisma);
 
 const DEFAULT_UNPAGINATED_DAYS = 90;
 const DEFAULT_UNPAGINATED_LIMIT = 300;
@@ -1525,6 +1527,14 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
         });
       }
 
+      // Amana Management: idempotent parcel tracking init (does not touch stock / Order.status).
+      if (newStatus === OrderStatus.IN_PROCESS) {
+        await amanaParcelTracking.ensureForOrderInTx(tx, {
+          orderId: order.id,
+          userId: req.user!.id,
+        });
+      }
+
       return order;
     });
       
@@ -2114,6 +2124,14 @@ router.put('/:id/full', authMiddleware, async (req, res) => {
       if (reportPatch.followUp) {
         await tx.orderFollowUp.create({
           data: { orderId, content: reportPatch.followUp, userId: req.user!.id },
+        });
+      }
+
+      // Amana Management: idempotent parcel tracking init (does not touch stock / Order.status).
+      if (finalStatus === OrderStatus.IN_PROCESS) {
+        await amanaParcelTracking.ensureForOrderInTx(tx, {
+          orderId,
+          userId: req.user!.id,
         });
       }
 

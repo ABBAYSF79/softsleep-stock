@@ -89,6 +89,13 @@ export const NAV_ITEMS: NavItem[] = [
     suiviAllowed: true,
   },
   {
+    title: "Amana Management",
+    path: "/amana-management",
+    icon: Package,
+    group: "orders",
+    suiviAllowed: true,
+  },
+  {
     title: "Quick Edit",
     path: "/quick-edit",
     icon: Pencil,

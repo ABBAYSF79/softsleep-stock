@@ -48,6 +48,7 @@ import confirmationUsersRoutes from './routes/confirmation-users';
 import invoicesRoutes from './routes/invoices';
 import orderFollowupsRoutes from './routes/order-followups';
 import amanaTrackingRoutes from './routes/amana-tracking';
+import amanaManagementRoutes from './routes/amana-management';
 import publicConfirmationRoutes from './routes/public-confirmation';
 
 // Use routes
@@ -65,6 +66,7 @@ app.use('/api/confirmation-users', confirmationUsersRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/order-followups', orderFollowupsRoutes);
 app.use('/api/amana-tracking', amanaTrackingRoutes);
+app.use('/api/amana-management', amanaManagementRoutes);
 app.use('/api/public/confirmation', publicConfirmationRoutes);
 
 const PORT = process.env.PORT || 3001;
