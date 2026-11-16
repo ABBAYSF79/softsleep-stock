@@ -6,6 +6,7 @@ import {
   MapPin,
   Pencil,
   Phone,
+  PlayCircle,
   ScanBarcode,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -272,12 +273,11 @@ export function AmanaParcelCard({
             type="button"
             size="sm"
             className="h-8 min-w-0 flex-[1.45] gap-1.5 px-2 [&_svg]:size-3.5 text-xs font-medium shadow-sm"
-            disabled={!tracking}
             onClick={onUpdateStatus}
-            title="Modifier le statut"
+            title={tracking ? "Modifier le statut" : "Initialiser le suivi Amana"}
           >
-            <Pencil />
-            <span className="truncate">Modifier le statut</span>
+            {tracking ? <Pencil /> : <PlayCircle />}
+            <span className="truncate">{tracking ? "Modifier le statut" : "Initialiser le suivi"}</span>
           </Button>
         )}
       </footer>

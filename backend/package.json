@@ -17,6 +17,7 @@
     "test:amana-tracking": "ts-node scripts/test-amana-tracking.ts",
     "test:amana-parcel": "ts-node scripts/test-amana-parcel-tracking.ts",
     "test:amana-alerts": "ts-node scripts/test-amana-parcel-alerts.ts",
+    "test:amana-initialize": "ts-node scripts/test-amana-parcel-initialize.ts",
     "seed:objectives": "ts-node scripts/seed-confirmation-objectives.ts",
     "test:livreur": "ts-node scripts/test-livreur-access.ts",
     "test:suivi": "ts-node scripts/test-suivi-access.ts"

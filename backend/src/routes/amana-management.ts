@@ -166,6 +166,33 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
 });
 
 /**
+ * POST /api/amana-management/:orderId/initialize
+ * Body: { status, note? } — ADMIN / SUIVI. Starts tracking for an uninitialized IN_PROCESS
+ * order with the chosen status. Does not touch Order.status / stock.
+ */
+router.post('/:orderId/initialize', authMiddleware, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ error: 'Invalid orderId', code: 'INVALID_ORDER_ID' });
+    }
+
+    const tracking = await service.initializeWithStatus(
+      orderId,
+      req.user!,
+      req.body?.status,
+      req.body?.note
+    );
+    res.status(201).json({ success: true, data: tracking });
+  } catch (error) {
+    const mapped = amanaParcelErrorToHttp(error);
+    if (mapped) return res.status(mapped.status).json(mapped.body);
+    console.error('Error initializing Amana parcel tracking:', error);
+    res.status(500).json({ error: 'Failed to initialize Amana parcel tracking' });
+  }
+});
+
+/**
  * PATCH /api/amana-management/:orderId/status
  * Manual status update — ADMIN / SUIVI only. Does not touch Order.status / stock.
  */

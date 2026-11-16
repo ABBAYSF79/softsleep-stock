@@ -1328,6 +1328,39 @@ export const useUpdateAmanaParcelStatus = () => {
   });
 };
 
+/** Starts Amana tracking for a "Non initialisé" order with the chosen status. */
+export const useInitializeAmanaParcel = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      status,
+      note,
+    }: {
+      orderId: number;
+      status: string;
+      note?: string;
+    }) => {
+      const { data } = await api.post(`/amana-management/${orderId}/initialize`, {
+        status,
+        ...(note ? { note } : {}),
+      });
+      return data as { success: boolean; data: AmanaParcelTrackingDetail };
+    },
+    onSuccess: (_result, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['amana-management', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['amana-management', 'alerts'] });
+      queryClient.invalidateQueries({
+        queryKey: ['amana-management', 'order', vars.orderId],
+      });
+      toast.success('Suivi Amana initialisé');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de l'initialisation du suivi Amana");
+    },
+  });
+};
+
 export const useApi = () => {
   return {
     getCommissionSettings,

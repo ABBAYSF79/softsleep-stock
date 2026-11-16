@@ -55,6 +55,7 @@ export function amanaParcelErrorToHttp(
       INVALID_NOTE: 400,
       INVALID_EXPORT_IDS: 400,
       EXPORT_TOO_LARGE: 413,
+      ALREADY_INITIALIZED: 409,
       FORBIDDEN: 403,
       NO_CHANGE: 200,
     };
@@ -723,6 +724,99 @@ export class AmanaParcelTrackingService {
         ? mapTracking(order.amanaParcelTracking)
         : null,
     };
+  }
+
+  /**
+   * Manual initialization of an uninitialized IN_PROCESS order with a chosen status — ADMIN / SUIVI.
+   * initialStatusAt keeps the departure date (inProcessAt, legacy createdAt); the single
+   * initial history entry is dated now and attributed to the user. Never touches Order / stock.
+   */
+  async initializeWithStatus(
+    orderId: number,
+    user: User,
+    rawStatus: unknown,
+    rawNote?: unknown
+  ) {
+    assertCanMutateAmanaParcel(user);
+
+    let status: AmanaParcelStatus;
+    try {
+      status = parseAmanaParcelStatus(rawStatus);
+    } catch {
+      throw new AmanaParcelTrackingError('Invalid Amana parcel status', 'INVALID_STATUS');
+    }
+
+    const note = normalizeNote(rawNote);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        userId: true,
+        deliveryServiceId: true,
+        status: true,
+        inProcessAt: true,
+        createdAt: true,
+        amanaParcelTracking: { select: { id: true } },
+      },
+    });
+
+    if (!order) {
+      throw new AmanaParcelTrackingError('Order not found', 'NOT_FOUND');
+    }
+
+    const deliveryServiceIds =
+      user.role === UserRole.LIVREUR || user.role === UserRole.SUIVI
+        ? await getUserDeliveryServiceIds(user.id)
+        : [];
+    assertCanAccessOrder(user, order, deliveryServiceIds);
+
+    if (order.amanaParcelTracking) {
+      throw new AmanaParcelTrackingError(
+        'Amana parcel tracking already initialized for this order',
+        'ALREADY_INITIALIZED'
+      );
+    }
+    if (order.status !== OrderStatus.IN_PROCESS) {
+      throw new AmanaParcelTrackingError(
+        'Only IN_PROCESS orders can be initialized',
+        'NOT_IN_PROCESS'
+      );
+    }
+
+    const now = new Date();
+    try {
+      const tracking = await this.prisma.amanaParcelTracking.create({
+        data: {
+          orderId: order.id,
+          status,
+          initialStatusAt: order.inProcessAt ?? order.createdAt,
+          lastStatusAt: now,
+          history: {
+            create: {
+              oldStatus: null,
+              newStatus: status,
+              changedAt: now,
+              changedByUserId: user.id,
+              note,
+            },
+          },
+        },
+        include: trackingInclude,
+      });
+      return mapTracking(tracking);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new AmanaParcelTrackingError(
+          'Amana parcel tracking already initialized for this order',
+          'ALREADY_INITIALIZED'
+        );
+      }
+      throw error;
+    }
   }
 
   async updateStatus(

@@ -41,6 +41,7 @@ import {
   useAmanaParcelAlerts,
   useAmanaParcelStatuses,
   useDeliveryServices,
+  useInitializeAmanaParcel,
   useUpdateAmanaParcelStatus,
   type AmanaManagementOrderRow,
 } from "@/hooks/useApi";
@@ -76,6 +77,7 @@ const AmanaManagement = () => {
   const { data: statusCatalog = [], isLoading: statusesLoading } = useAmanaParcelStatuses();
   const { data: deliveryServices } = useDeliveryServices();
   const updateStatus = useUpdateAmanaParcelStatus();
+  const initializeParcel = useInitializeAmanaParcel();
   const {
     data: alertsData,
     isLoading: alertsLoading,
@@ -231,13 +233,18 @@ const AmanaManagement = () => {
 
   const handleStatusSubmit = useCallback(
     async (args: { orderId: number; status: string; note?: string }) => {
+      if (!statusOrder?.amanaTracking) {
+        await initializeParcel.mutateAsync(args);
+        setStatusOrder(null);
+        return;
+      }
       const result = await updateStatus.mutateAsync(args);
       if (result.changed !== false) {
         setStatusOrder(null);
       }
       await refetch();
     },
-    [updateStatus, refetch]
+    [statusOrder, initializeParcel, updateStatus, refetch]
   );
 
   if (error) {
@@ -487,7 +494,7 @@ const AmanaManagement = () => {
         order={statusOrder}
         statuses={statusCatalog}
         canMutate={canMutateStatus}
-        isSaving={updateStatus.isPending}
+        isSaving={updateStatus.isPending || initializeParcel.isPending}
         onSubmit={handleStatusSubmit}
       />
 

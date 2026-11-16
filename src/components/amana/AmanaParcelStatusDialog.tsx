@@ -21,6 +21,8 @@ import { AmanaParcelStatusBadge } from "@/components/amana/AmanaParcelStatusBadg
 import type { AmanaManagementOrderRow, AmanaParcelStatusOption } from "@/hooks/useApi";
 import { format } from "date-fns";
 
+const DEFAULT_INITIAL_STATUS = "SORTI_A_DESTINATION";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,12 +48,14 @@ export function AmanaParcelStatusDialog({
 
   useEffect(() => {
     if (open && order) {
-      setNextStatus(order.amanaTracking?.status?.code ?? "");
+      setNextStatus(order.amanaTracking?.status?.code ?? DEFAULT_INITIAL_STATUS);
       setNote("");
     }
   }, [open, order]);
 
   if (!order) return null;
+
+  const isInitialization = !order.amanaTracking;
 
   const handleConfirm = async () => {
     if (!canMutate || !nextStatus || isSaving) return;
@@ -66,9 +70,13 @@ export function AmanaParcelStatusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Statut Amana</DialogTitle>
+          <DialogTitle>
+            {isInitialization ? "Initialiser le suivi Amana" : "Statut Amana"}
+          </DialogTitle>
           <DialogDescription>
-            Mise à jour manuelle du suivi Amana — n’affecte pas le statut de la commande.
+            {isInitialization
+              ? "Choisis le statut de départ pour commencer le suivi — n’affecte pas le statut de la commande."
+              : "Mise à jour manuelle du suivi Amana — n’affecte pas le statut de la commande."}
           </DialogDescription>
         </DialogHeader>
 
@@ -95,11 +103,13 @@ export function AmanaParcelStatusDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amana-status">Nouveau statut</Label>
+            <Label htmlFor="amana-status">
+              {isInitialization ? "Statut initial" : "Nouveau statut"}
+            </Label>
             <Select
               value={nextStatus || undefined}
               onValueChange={setNextStatus}
-              disabled={!canMutate || isSaving || !order.amanaTracking}
+              disabled={!canMutate || isSaving}
             >
               <SelectTrigger id="amana-status">
                 <SelectValue placeholder="Choisir un statut" />
@@ -123,7 +133,7 @@ export function AmanaParcelStatusDialog({
               placeholder="Ex. client absent, report…"
               rows={3}
               maxLength={2000}
-              disabled={!canMutate || isSaving || !order.amanaTracking}
+              disabled={!canMutate || isSaving}
             />
           </div>
         </div>
@@ -140,14 +150,9 @@ export function AmanaParcelStatusDialog({
           <Button
             type="button"
             onClick={handleConfirm}
-            disabled={
-              !canMutate ||
-              isSaving ||
-              !order.amanaTracking ||
-              !nextStatus
-            }
+            disabled={!canMutate || isSaving || !nextStatus}
           >
-            {isSaving ? "Enregistrement…" : "Confirmer"}
+            {isSaving ? "Enregistrement…" : isInitialization ? "Initialiser" : "Confirmer"}
           </Button>
         </DialogFooter>
       </DialogContent>
